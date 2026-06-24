@@ -29,6 +29,24 @@ export const AllowedGuildOnly: GuardFunction<CommandInteraction> = async (
   await next();
 };
 
+export const ManageGuildOnly: GuardFunction<CommandInteraction> = async (
+  interaction,
+  _client,
+  next,
+) => {
+  if (
+    !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)
+  ) {
+    await interaction.reply({
+      content: "You need the **Manage Server** permission to use this command.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await next();
+};
+
 export const ManageRolesOnly: GuardFunction<CommandInteraction> = async (
   interaction,
   _client,

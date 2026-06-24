@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import { migrateYoutubeSubscriptions } from "../modules/youtube-alerter/database.js";
 import { migrateXTables } from "../modules/x-alerter/database.js";
 import { migrateRssTables } from "../modules/rss-alerter/database.js";
+import { migrateAuditLogTables } from "../modules/audit-log/database.js";
 
 export type Database = DatabaseDriver.Database;
 
@@ -50,6 +51,7 @@ export function createDatabase(path: string): Database {
   migrateYoutubeSubscriptions(db);
   migrateXTables(db);
   migrateRssTables(db);
+  migrateAuditLogTables(db);
   tidyDatabase(db);
 
   return db;

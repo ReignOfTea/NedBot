@@ -15,6 +15,7 @@ export const bot = new Client({
   intents: [
     IntentsBitField.Flags.Guilds,
     IntentsBitField.Flags.GuildMembers,
+    IntentsBitField.Flags.GuildModeration,
   ],
   silent: true,
   botGuilds: [config.discordGuildId],
