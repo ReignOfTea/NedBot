@@ -48,9 +48,16 @@ bot.once("clientReady", async () => {
   // Remove stale global commands so only guild-scoped commands are active.
   await bot.application?.commands.set([]);
   await bot.initApplicationCommands();
+
+  const guildCommands = await bot.application?.commands.fetch({
+    guildId: config.discordGuildId,
+  });
+  const commandNames = [...(guildCommands?.values() ?? [])]
+    .map((command) => command.name)
+    .sort();
+
   coreLog.info(
-    { guildId: config.discordGuildId },
-    "Slash commands synced to guild",
+    `Slash commands synced to guild ${config.discordGuildId}: ${commandNames.join(", ")}`,
   );
 });
 

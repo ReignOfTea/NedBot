@@ -9,6 +9,7 @@
     "build": "tsc",
     "dev": "tsx watch src/dev.ts",
     "start": "node build/main.js",
+    "sync:commands": "tsx src/sync-commands.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
