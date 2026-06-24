@@ -59,44 +59,51 @@ export class GitUpdater {
         return false;
       }
 
-      await runGitStep("fetch", () =>
-        runCommand("git", [
-          "fetch",
-          "--prune",
-          this.config.gitRemote,
-          `refs/heads/${this.config.gitBranch}:refs/remotes/${remoteRef}`,
-        ]),
+      await runGitStep(
+        "fetch",
+        () =>
+          runCommand("git", [
+            "fetch",
+            "--prune",
+            this.config.gitRemote,
+            `refs/heads/${this.config.gitBranch}:refs/remotes/${remoteRef}`,
+          ]),
+        { quiet: true },
       );
 
-      const behind = await runGitStep("check", () => commitsBehind(remoteRef));
+      const behind = await runGitStep("check", () => commitsBehind(remoteRef), {
+        quiet: true,
+      });
       if (behind === 0) {
         coreLog.debug("Git auto-update — already up to date");
         return false;
       }
 
       this.updating = true;
+      const fromSha = await gitShortRef("HEAD");
+      const toSha = await gitShortRef(remoteRef);
       coreLog.info(
-        { behind, branch: this.config.gitBranch },
-        "New commits detected, pulling and restarting",
+        `Git auto-update: ${behind} new commit(s) on ${this.config.gitBranch} (${fromSha} → ${toSha})`,
       );
 
-      await this.options.onBeforeRestart();
-
-      await runGitStep("pull", () =>
-        runCommand("git", [
-          "pull",
-          "--ff-only",
-          this.config.gitRemote,
-          this.config.gitBranch,
-        ]),
+      await runGitStep(
+        "pull",
+        () =>
+          runCommand("git", [
+            "pull",
+            "--ff-only",
+            this.config.gitRemote,
+            this.config.gitBranch,
+          ]),
+        { summarize: summarizeGitPull },
       );
 
-      await runGitStep("npm install", () => runCommand(npmCommand(), ["install"]));
-      await runGitStep("npm build", () =>
-        runCommand(npmCommand(), ["run", "build"]),
-      );
+      await runGitStep("npm install", () => runNpmCommand(["install"]));
+      await runGitStep("npm build", () => runNpmCommand(["run", "build"]));
 
-      coreLog.info("Update complete, restarting bot");
+      await runGitStep("shutdown", () => this.options.onBeforeRestart());
+
+      coreLog.info("Git auto-update: restart starting");
       restartProcess();
     } catch (error) {
       this.updating = false;
@@ -127,38 +134,37 @@ async function commitsBehind(remoteRef: string): Promise<number> {
   return Number(stdout.trim()) || 0;
 }
 
-function npmCommand(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+async function gitShortRef(ref: string): Promise<string> {
+  const { stdout } = await runCommand("git", ["rev-parse", "--short", ref]);
+  return stdout.trim();
 }
 
-async function runGitStep<T>(
-  step: string,
-  action: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await action();
-  } catch (error) {
-    const detail = formatCommandError(error);
-    throw new Error(`${step}: ${detail}`);
-  }
+function summarizeGitPull(result: {
+  stdout: string;
+  stderr: string;
+}): string | undefined {
+  const line = `${result.stdout}\n${result.stderr}`
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find((value) => value.length > 0);
+
+  return line?.slice(0, 200);
 }
 
-function formatCommandError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
+function runNpmCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  // npm on Windows is a .cmd shim; spawn requires shell: true (EINVAL otherwise).
+  return runCommand("npm", args, { shell: process.platform === "win32" });
 }
 
 function runCommand(
   command: string,
   args: string[],
-  options: { allowFailure?: boolean } = {},
+  options: { allowFailure?: boolean; shell?: boolean } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: getRepoRoot(),
-      shell: false,
+      shell: options.shell ?? false,
       env: process.env,
     });
 
@@ -186,6 +192,61 @@ function runCommand(
       );
     });
   });
+}
+
+async function runGitStep<T>(
+  step: string,
+  action: () => Promise<T>,
+  options: {
+    quiet?: boolean;
+    summarize?: (result: T) => string | undefined;
+  } = {},
+): Promise<T> {
+  const started = Date.now();
+
+  if (!options.quiet) {
+    coreLog.info(`Git auto-update: ${step}…`);
+  }
+
+  try {
+    const result = await action();
+    const durationMs = Date.now() - started;
+
+    if (options.quiet) {
+      coreLog.debug(
+        `Git auto-update: ${step} complete (${formatDuration(durationMs)})`,
+      );
+      return result;
+    }
+
+    const summary = options.summarize?.(result);
+    const suffix = summary ? ` — ${summary}` : "";
+    coreLog.info(
+      `Git auto-update: ${step} complete (${formatDuration(durationMs)})${suffix}`,
+    );
+    return result;
+  } catch (error) {
+    const durationMs = Date.now() - started;
+    const detail = formatCommandError(error);
+    throw new Error(
+      `${step} failed after ${formatDuration(durationMs)}: ${detail}`,
+    );
+  }
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function formatCommandError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 export function startGitUpdater(
