@@ -5,6 +5,8 @@ import { coreLog } from "./logger.js";
 import { getRepoRoot, restartProcess } from "./restart.js";
 
 export interface GitUpdaterOptions {
+  /** Called before pull/install when an update is about to start. */
+  onPrepareForUpdate?: () => Promise<void>;
   onBeforeRestart: () => Promise<void>;
 }
 
@@ -52,6 +54,7 @@ export class GitUpdater {
     }
 
     const remoteRef = `${this.config.gitRemote}/${this.config.gitBranch}`;
+    let shutdownCompleted = false;
 
     try {
       if (!(await isGitRepository())) {
@@ -86,6 +89,10 @@ export class GitUpdater {
         `Git auto-update: ${behind} new commit(s) on ${this.config.gitBranch} (${fromSha} → ${toSha})`,
       );
 
+      await logDirtyWorkingTree();
+
+      await this.options.onPrepareForUpdate?.();
+
       await runGitStep(
         "pull",
         () =>
@@ -98,17 +105,28 @@ export class GitUpdater {
         { summarize: summarizeGitPull },
       );
 
+      await runGitStep("shutdown", async () => {
+        await this.options.onBeforeRestart();
+        shutdownCompleted = true;
+      });
+
       await runGitStep("npm install", () => runNpmCommand(["install"]));
       await runGitStep("npm build", () => runNpmCommand(["run", "build"]));
-
-      await runGitStep("shutdown", () => this.options.onBeforeRestart());
 
       coreLog.info("Git auto-update: restart starting");
       restartProcess();
     } catch (error) {
       this.updating = false;
       const detail = formatCommandError(error);
-      coreLog.error({ err: error }, `Git auto-update failed: ${detail}`);
+      coreLog.error(`Git auto-update failed — ${detail}`);
+
+      if (shutdownCompleted) {
+        coreLog.warn(
+          "Git auto-update: bot was shut down before failure — restarting to recover",
+        );
+        restartProcess();
+      }
+
       return false;
     }
 
@@ -137,6 +155,28 @@ async function commitsBehind(remoteRef: string): Promise<number> {
 async function gitShortRef(ref: string): Promise<string> {
   const { stdout } = await runCommand("git", ["rev-parse", "--short", ref]);
   return stdout.trim();
+}
+
+async function logDirtyWorkingTree(): Promise<void> {
+  const { stdout } = await runCommand("git", [
+    "status",
+    "--porcelain",
+  ], { allowFailure: true });
+
+  const dirty = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (dirty.length === 0) {
+    return;
+  }
+
+  const preview = dirty.slice(0, 5).join("; ");
+  const suffix = dirty.length > 5 ? ` (+${dirty.length - 5} more)` : "";
+  coreLog.warn(
+    `Git auto-update: working tree has local changes — pull may fail (${preview}${suffix})`,
+  );
 }
 
 function summarizeGitPull(result: {

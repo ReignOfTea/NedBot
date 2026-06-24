@@ -1,6 +1,6 @@
 import "reflect-metadata";
 
-import chokidar from "chokidar";
+import chokidar, { type FSWatcher } from "chokidar";
 
 import { bot } from "./core/bot.js";
 import { loadConfig } from "./core/config.js";
@@ -24,7 +24,24 @@ async function run(): Promise<void> {
   bot.initEvents();
   await bot.login(config.botToken);
 
+  let watcher: FSWatcher | null = null;
+  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
   const gitUpdater = startGitUpdater(config, {
+    onPrepareForUpdate: async () => {
+      gitUpdater.stop();
+
+      if (reloadTimer) {
+        clearTimeout(reloadTimer);
+        reloadTimer = null;
+      }
+
+      if (watcher) {
+        await watcher.close();
+        watcher = null;
+        coreLog.info("Git auto-update: hot reload paused for update");
+      }
+    },
     onBeforeRestart: async () => {
       await shutdownModules();
       bot.destroy();
@@ -34,8 +51,7 @@ async function run(): Promise<void> {
   if (!config.isProduction) {
     coreLog.info("Hot reload enabled — module and command changes reload automatically");
 
-    const watcher = chokidar.watch(watchPattern, { ignoreInitial: true });
-    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    watcher = chokidar.watch(watchPattern, { ignoreInitial: true });
 
     const scheduleReload = () => {
       if (reloadTimer) {
@@ -57,6 +73,15 @@ async function run(): Promise<void> {
   const shutdown = async (signal: string) => {
     coreLog.info({ signal }, "Shutting down");
     gitUpdater.stop();
+
+    if (reloadTimer) {
+      clearTimeout(reloadTimer);
+    }
+
+    if (watcher) {
+      await watcher.close();
+    }
+
     await shutdownModules();
     bot.destroy();
     process.exit(0);
