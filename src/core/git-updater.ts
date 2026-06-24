@@ -51,21 +51,24 @@ export class GitUpdater {
       return false;
     }
 
+    const remoteRef = `${this.config.gitRemote}/${this.config.gitBranch}`;
+
     try {
       if (!(await isGitRepository())) {
         coreLog.warn("Git auto-update skipped — not a git repository");
         return false;
       }
 
-      await runCommand("git", [
-        "fetch",
-        this.config.gitRemote,
-        this.config.gitBranch,
-      ]);
-
-      const behind = await commitsBehind(
-        `${this.config.gitRemote}/${this.config.gitBranch}`,
+      await runGitStep("fetch", () =>
+        runCommand("git", [
+          "fetch",
+          "--prune",
+          this.config.gitRemote,
+          `refs/heads/${this.config.gitBranch}:refs/remotes/${remoteRef}`,
+        ]),
       );
+
+      const behind = await runGitStep("check", () => commitsBehind(remoteRef));
       if (behind === 0) {
         coreLog.debug("Git auto-update — already up to date");
         return false;
@@ -79,21 +82,26 @@ export class GitUpdater {
 
       await this.options.onBeforeRestart();
 
-      await runCommand("git", [
-        "pull",
-        "--ff-only",
-        this.config.gitRemote,
-        this.config.gitBranch,
-      ]);
+      await runGitStep("pull", () =>
+        runCommand("git", [
+          "pull",
+          "--ff-only",
+          this.config.gitRemote,
+          this.config.gitBranch,
+        ]),
+      );
 
-      await runCommand("npm", ["install"]);
-      await runCommand("npm", ["run", "build"]);
+      await runGitStep("npm install", () => runCommand(npmCommand(), ["install"]));
+      await runGitStep("npm build", () =>
+        runCommand(npmCommand(), ["run", "build"]),
+      );
 
       coreLog.info("Update complete, restarting bot");
       restartProcess();
     } catch (error) {
       this.updating = false;
-      coreLog.error({ err: error }, "Git auto-update failed");
+      const detail = formatCommandError(error);
+      coreLog.error({ err: error }, `Git auto-update failed: ${detail}`);
       return false;
     }
 
@@ -119,6 +127,29 @@ async function commitsBehind(remoteRef: string): Promise<number> {
   return Number(stdout.trim()) || 0;
 }
 
+function npmCommand(): string {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+async function runGitStep<T>(
+  step: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await action();
+  } catch (error) {
+    const detail = formatCommandError(error);
+    throw new Error(`${step}: ${detail}`);
+  }
+}
+
+function formatCommandError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 function runCommand(
   command: string,
   args: string[],
@@ -127,7 +158,7 @@ function runCommand(
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: getRepoRoot(),
-      shell: process.platform === "win32",
+      shell: false,
       env: process.env,
     });
 
