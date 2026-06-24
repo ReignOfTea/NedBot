@@ -9,8 +9,8 @@ export class CoreCommands {
   @Slash({ description: "Check bot response time", name: "ping" })
   async ping(interaction: CommandInteraction): Promise<void> {
     const started = Date.now();
-    await interaction.reply({ content: "ping" });
+    await interaction.reply({ content: "Pong!" });
     const ms = Date.now() - started;
-    await interaction.editReply(`ping — ${ms}ms`);
+    await interaction.editReply(`Pong! ${ms}ms`);
   }
 }
