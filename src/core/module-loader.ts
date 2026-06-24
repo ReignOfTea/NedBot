@@ -2,6 +2,7 @@ import { dirname, resolve } from "@discordx/importer";
 import { DIService, MetadataStorage } from "discordx";
 
 import { bot } from "./bot.js";
+import "./commands.js";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./database.js";
 import { coreLog, createModuleLogger } from "./logger.js";
