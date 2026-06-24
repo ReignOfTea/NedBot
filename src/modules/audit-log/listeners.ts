@@ -1,7 +1,7 @@
 import { Events, type Guild, type GuildAuditLogsEntry } from "discord.js";
 
 import type { ModuleContext } from "../../core/types.js";
-import { isModerationAction } from "./actions.js";
+import { shouldLogAction } from "./actions.js";
 import { getAuditLogSettings } from "./database.js";
 import { buildAuditLogEmbed } from "./formatter.js";
 import { log } from "./log.js";
@@ -32,12 +32,12 @@ export class AuditLogListener {
       return;
     }
 
-    if (!isModerationAction(entry.action)) {
+    const settings = getAuditLogSettings(this.ctx.db, guild.id);
+    if (!settings?.enabled) {
       return;
     }
 
-    const settings = getAuditLogSettings(this.ctx.db, guild.id);
-    if (!settings) {
+    if (!shouldLogAction(entry.action, settings.disabledActions)) {
       return;
     }
 
