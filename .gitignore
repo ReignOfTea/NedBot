@@ -3,6 +3,7 @@ build/
 dist/
 data/
 scripts/
+logs/
 *.db
 .env
 .env.local

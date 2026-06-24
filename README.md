@@ -62,10 +62,42 @@ If you have not already, copy `.env.example` to `.env` and add your keys (see [A
 # Development (hot reload)
 npm run dev
 
-# Production
+# Production (foreground)
 npm run build
 npm start
 ```
+
+### 5. Production with PM2
+
+[PM2](https://pm2.keymetrics.io/) keeps the bot running and restarts it after crashes or git auto-updates.
+
+```bash
+npm install
+cp .env.example .env   # fill in secrets
+npm run pm2:start      # build + start under PM2
+```
+
+Useful commands:
+
+| Command | Description |
+|---------|-------------|
+| `npm run pm2:logs` | Tail bot output |
+| `npm run pm2:restart` | Manual restart |
+| `npm run pm2:stop` | Stop the process |
+| `npm run pm2:delete` | Remove from PM2 |
+
+**Persist across reboots** (run once on the server):
+
+```bash
+pm2 save
+pm2 startup
+# run the command pm2 startup prints, then:
+pm2 save
+```
+
+When `GIT_AUTO_UPDATE_ENABLED=true`, the bot pulls, rebuilds, and exits — PM2 automatically starts the new version. Run the bot with `npm run pm2:start`, not `npm start`, for this to work.
+
+Logs are written to `logs/pm2-out.log` and `logs/pm2-error.log`.
 
 ## YouTube Alerter
 

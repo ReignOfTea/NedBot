@@ -10,6 +10,11 @@
     "dev": "tsx watch src/dev.ts",
     "start": "node build/main.js",
     "sync:commands": "tsx src/sync-commands.ts",
+    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop ned-bot",
+    "pm2:restart": "pm2 restart ned-bot",
+    "pm2:logs": "pm2 logs ned-bot",
+    "pm2:delete": "pm2 delete ned-bot",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -29,7 +34,8 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.4.0",
     "tsx": "^4.20.5",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "pm2": "^6.0.8"
   },
   "engines": {
     "node": ">=22.0.0"
