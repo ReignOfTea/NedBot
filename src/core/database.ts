@@ -50,8 +50,31 @@ export function createDatabase(path: string): Database {
   migrateYoutubeSubscriptions(db);
   migrateXTables(db);
   migrateRssTables(db);
+  tidyDatabase(db);
 
   return db;
+}
+
+/** Drop tables from removed modules and reclaim space when needed. */
+function tidyDatabase(db: Database): void {
+  const removedTables = ["instagram_subscriptions", "instagram_session"];
+  let dropped = false;
+
+  for (const table of removedTables) {
+    const exists = db
+      .prepare(
+        `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`,
+      )
+      .get(table);
+    if (exists) {
+      db.exec(`DROP TABLE IF EXISTS ${table}`);
+      dropped = true;
+    }
+  }
+
+  if (dropped) {
+    db.exec("VACUUM");
+  }
 }
 
 function migrateDatabase(db: Database): void {

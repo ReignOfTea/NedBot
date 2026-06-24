@@ -9,8 +9,7 @@
     "build": "tsc",
     "dev": "tsx watch src/dev.ts",
     "start": "node build/main.js",
-    "typecheck": "tsc --noEmit",
-    "test:alerters": "tsx scripts/test-alerters.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@discordx/importer": "^1.3.3",

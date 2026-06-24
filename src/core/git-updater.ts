@@ -86,7 +86,7 @@ export class GitUpdater {
         this.config.gitBranch,
       ]);
 
-      await runCommand("npm", ["ci"], { allowFailure: false });
+      await runCommand("npm", ["install"]);
       await runCommand("npm", ["run", "build"]);
 
       coreLog.info("Update complete, restarting bot");
