@@ -8,6 +8,7 @@ export interface AppConfig {
   rssPollIntervalMs: number;
   isProduction: boolean;
   discordGuildId: string;
+  botsChannelId: string;
   xAuthToken: string | null;
   xCt0: string | null;
   xEnabled: boolean;
@@ -39,6 +40,8 @@ export function loadConfig(): AppConfig {
       Number(process.env.RSS_POLL_INTERVAL_SECONDS ?? 300) * 1000,
     isProduction: process.env.NODE_ENV === "production",
     discordGuildId: requireEnv("DISCORD_GUILD_ID"),
+    botsChannelId:
+      process.env.BOTS_CHANNEL_ID?.trim() || "1519421945324765296",
     xAuthToken,
     xCt0,
     xEnabled: Boolean(xAuthToken && xCt0),

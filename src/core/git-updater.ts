@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 
 import type { AppConfig } from "./config.js";
+import { bot } from "./bot.js";
+import { announceInBotsChannel } from "./bots-channel.js";
 import { coreLog } from "./logger.js";
 import { getRepoRoot, restartProcess } from "./restart.js";
 
@@ -87,6 +89,13 @@ export class GitUpdater {
       const toSha = await gitShortRef(remoteRef);
       coreLog.info(
         `Git auto-update: ${behind} new commit(s) on ${this.config.gitBranch} (${fromSha} → ${toSha})`,
+      );
+
+      await announceInBotsChannel(
+        bot,
+        this.config.discordGuildId,
+        this.config.botsChannelId,
+        `Ned bot is updating (${behind} commit(s): \`${fromSha}\` → \`${toSha}\`)…`,
       );
 
       await logDirtyWorkingTree();

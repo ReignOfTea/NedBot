@@ -6,6 +6,7 @@ import {
 import { Client } from "discordx";
 
 import { coreLog } from "./logger.js";
+import { announceInBotsChannel } from "./bots-channel.js";
 import { isIgnorableInteractionError } from "./interactions.js";
 import { loadConfig } from "./config.js";
 
@@ -58,6 +59,13 @@ bot.once("clientReady", async () => {
 
   coreLog.info(
     `Slash commands synced to guild ${config.discordGuildId}: ${commandNames.join(", ")}`,
+  );
+
+  await announceInBotsChannel(
+    bot,
+    config.discordGuildId,
+    config.botsChannelId,
+    "Ned bot is online.",
   );
 });
 
