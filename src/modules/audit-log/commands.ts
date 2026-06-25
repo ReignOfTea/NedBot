@@ -14,7 +14,8 @@ import {
   SlashOption,
 } from "discordx";
 
-import { AllowedGuildOnly, ManageGuildOnly } from "../../core/guards.js";
+import { AllowedGuildOnly } from "../../core/guards.js";
+import { CommandPermission } from "../../core/permissions/index.js";
 import { getModuleContext } from "../../core/module-loader.js";
 import {
   AUDIT_CATEGORIES,
@@ -79,7 +80,7 @@ function formatStatus(
   description: "Moderation audit logging",
   name: "audit",
 })
-@Guard(AllowedGuildOnly, ManageGuildOnly)
+@Guard(AllowedGuildOnly, CommandPermission)
 export class AuditCommands {
   @Slash({
     description: "Set the channel where moderation actions are logged",

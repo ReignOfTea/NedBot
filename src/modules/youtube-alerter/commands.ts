@@ -19,6 +19,7 @@ import {
 import { parsePingIds } from "../../core/database.js";
 import { getModuleContext } from "../../core/module-loader.js";
 import { AllowedGuildOnly } from "../../core/guards.js";
+import { CommandPermission } from "../../core/permissions/index.js";
 import {
   addSubscriptionPing,
   clearSubscriptionPings,
@@ -41,7 +42,7 @@ import { YoutubeApiClient } from "./youtube-api.js";
   description: "YouTube live, video, and community post alerts",
   name: "youtube",
 })
-@Guard(AllowedGuildOnly)
+@Guard(AllowedGuildOnly, CommandPermission)
 export class YoutubeCommands {
   @Slash({
     description: "Subscribe a YouTube channel (set one or more alert channels)",

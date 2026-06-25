@@ -18,6 +18,7 @@ import {
 
 import { parsePingIds } from "../../core/database.js";
 import { AllowedGuildOnly } from "../../core/guards.js";
+import { CommandPermission } from "../../core/permissions/index.js";
 import { getModuleContext } from "../../core/module-loader.js";
 import {
   addSubscriptionPing,
@@ -43,7 +44,7 @@ const SETUP_HINT =
   description: "X (Twitter) post alerts via Web Push",
   name: "x",
 })
-@Guard(AllowedGuildOnly)
+@Guard(AllowedGuildOnly, CommandPermission)
 export class XCommands {
   @Slash({
     description: "Subscribe to alerts when an X account posts",

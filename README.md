@@ -213,9 +213,33 @@ src/
 | `DATABASE_PATH` | No | `./data/ned-bot.db` | SQLite file path |
 | `YOUTUBE_QUOTA_BUDGET_PER_DAY` | No | `8000` | Max API quota units for polling per day; interval is derived from this and subscription count |
 | `YOUTUBE_COMMUNITY_POST_CHECKS_ENABLED` | No | `false` | Enable community post checks via `activities.list` (+1 quota unit per poll) |
-| `BOT_ADMIN_USER_IDS` | No | — | Comma-separated user IDs for `/restart`, `/eval`, `/db`, `/status`; falls back to Administrator |
+| `BOT_OWNER_USER_ID` | Yes* | — | Bot owner; bypasses all permission checks and manages `/perms` |
+| `BOT_ADMIN_USER_IDS` | No | — | Legacy super-admins that bypass all permission checks |
 | `GIT_AUTO_UPDATE_INTERVAL_SECONDS` | No | `300` | How often to check for git updates when auto-update is enabled |
 | `NODE_ENV` | No | `development` | Set to `production` to disable HMR |
+
+\*Required for `/perms` management. Set this to your Discord user ID.
+
+## Permissions
+
+Command access is controlled per Discord role. The owner (`BOT_OWNER_USER_ID`) and anyone in `BOT_ADMIN_USER_IDS` bypass all checks.
+
+1. Set `BOT_OWNER_USER_ID` in `.env`.
+2. Use `/perms catalog` to see permission keys (e.g. `youtube.*`, `admin.restart`).
+3. Grant permissions: `/perms grant role:@Moderators permission:youtube.*`
+4. List a role's permissions: `/perms list role:@Moderators`
+
+Wildcard grants work: `admin.*` covers all admin commands; `youtube.*` covers all `/youtube` subcommands.
+
+### Admin commands
+
+| Command | Permission | Description |
+|---------|------------|-------------|
+| `/update` | `admin.update` | Pull, build, and restart |
+| `/restart` | `admin.restart` | Restart (optional `update:true` to pull first) |
+| `/eval` | `admin.eval` | Run server JavaScript |
+| `/db` | `admin.db` | SQLite shell |
+| `/status` | `admin.status` | Runtime health stats |
 
 ## License
 

@@ -18,6 +18,7 @@ import {
 import { parsePingIds } from "../../core/database.js";
 import { AllowedGuildOnly } from "../../core/guards.js";
 import { DeferEphemeral, editEphemeral } from "../../core/interactions.js";
+import { CommandPermission } from "../../core/permissions/index.js";
 import { getModuleContext } from "../../core/module-loader.js";
 import {
   addSubscriptionPing,
@@ -51,7 +52,7 @@ const REGEX_HINT =
   description: "RSS and Atom feed alerts with regex filtering",
   name: "rss",
 })
-@Guard(AllowedGuildOnly, DeferEphemeral)
+@Guard(AllowedGuildOnly, CommandPermission, DeferEphemeral)
 export class RssCommands {
   @Slash({
     description: "Subscribe to an RSS/Atom feed with regex filtering",

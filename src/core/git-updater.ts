@@ -12,6 +12,13 @@ export interface GitUpdaterOptions {
   onBeforeRestart: () => Promise<void>;
 }
 
+export type UpdateResult =
+  | { status: "up_to_date" }
+  | { status: "started" }
+  | { status: "busy" }
+  | { status: "not_git" }
+  | { status: "failed"; message: string };
+
 export class GitUpdater {
   private interval: ReturnType<typeof setInterval> | null = null;
   private updating = false;
@@ -52,9 +59,9 @@ export class GitUpdater {
     }
   }
 
-  async checkForUpdates(): Promise<boolean> {
+  async checkForUpdates(): Promise<UpdateResult> {
     if (this.updating || this.checkInProgress || this.exiting) {
-      return false;
+      return { status: "busy" };
     }
 
     this.checkInProgress = true;
@@ -64,7 +71,7 @@ export class GitUpdater {
     try {
       if (!(await isGitRepository())) {
         coreLog.warn("Git auto-update skipped — not a git repository");
-        return false;
+        return { status: "not_git" };
       }
 
       await runGitStep(
@@ -84,7 +91,7 @@ export class GitUpdater {
       });
       if (behind === 0) {
         coreLog.debug("Git auto-update — already up to date");
-        return false;
+        return { status: "up_to_date" };
       }
 
       this.updating = true;
@@ -130,6 +137,7 @@ export class GitUpdater {
       coreLog.info("Git auto-update: restart starting");
       this.exiting = true;
       restartProcess();
+      return { status: "started" };
     } catch (error) {
       this.updating = false;
       const detail = formatCommandError(error);
@@ -141,16 +149,15 @@ export class GitUpdater {
         );
         this.exiting = true;
         restartProcess();
+        return { status: "started" };
       }
 
-      return false;
+      return { status: "failed", message: detail };
     } finally {
       if (!this.updating) {
         this.checkInProgress = false;
       }
     }
-
-    return true;
   }
 }
 

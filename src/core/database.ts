@@ -6,6 +6,7 @@ import { migrateYoutubeSubscriptions } from "../modules/youtube-alerter/database
 import { migrateXTables } from "../modules/x-alerter/database.js";
 import { migrateRssTables } from "../modules/rss-alerter/database.js";
 import { migrateAuditLogTables } from "../modules/audit-log/database.js";
+import { migratePermissionTables } from "./permissions/database.js";
 
 export type Database = DatabaseDriver.Database;
 
@@ -48,6 +49,7 @@ export function createDatabase(path: string): Database {
   `);
 
   migrateDatabase(db);
+  migratePermissionTables(db);
   migrateYoutubeSubscriptions(db);
   migrateXTables(db);
   migrateRssTables(db);

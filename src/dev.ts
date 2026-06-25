@@ -13,6 +13,7 @@ import {
   shutdownModules,
 } from "./core/module-loader.js";
 import { startGitUpdater } from "./core/git-updater.js";
+import { setGitUpdater } from "./core/git-updater-runtime.js";
 
 async function run(): Promise<void> {
   const config = loadConfig();
@@ -47,6 +48,7 @@ async function run(): Promise<void> {
       bot.destroy();
     },
   });
+  setGitUpdater(gitUpdater);
 
   if (!config.isProduction) {
     coreLog.info("Hot reload enabled — module and command changes reload automatically");

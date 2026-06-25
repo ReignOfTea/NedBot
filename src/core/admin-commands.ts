@@ -6,10 +6,13 @@ import { Discord, Guard, Slash, SlashChoice, SlashOption } from "discordx";
 
 import { bot } from "./bot.js";
 import { createDbShell, KNOWN_DB_TABLES, type DbShellRowOptions } from "./db-shell.js";
-import { AllowedGuildOnly, BotAdminOnly } from "./guards.js";
-import { editEphemeral, DeferEphemeral } from "./interactions.js";
+import { AllowedGuildOnly } from "./guards.js";
+import { getGitUpdater } from "./git-updater-runtime.js";
+import type { UpdateResult } from "./git-updater.js";
+import { DeferEphemeral, editEphemeral } from "./interactions.js";
 import { requestRestart } from "./lifecycle.js";
 import { getModuleContext } from "./module-loader.js";
+import { requirePermission } from "./permissions/index.js";
 import { isPm2Managed } from "./restart.js";
 import { getYoutubePoller } from "../modules/youtube-alerter/runtime.js";
 
@@ -36,24 +39,43 @@ const AsyncFunction = Object.getPrototypeOf(async function () {})
 ) => (...args: unknown[]) => Promise<unknown>;
 
 @Discord()
-@Guard(AllowedGuildOnly, BotAdminOnly)
+@Guard(AllowedGuildOnly)
 export class AdminCommands {
   @Slash({ description: "Restart the bot process", name: "restart" })
-  @Guard(DeferEphemeral)
-  async restart(interaction: CommandInteraction): Promise<void> {
-    await editEphemeral(
-      interaction,
-      "Restarting bot…",
-    );
+  @Guard(DeferEphemeral, requirePermission("admin.restart"))
+  async restart(
+    @SlashOption({
+      description: "Pull updates and rebuild before restarting",
+      name: "update",
+      required: false,
+      type: ApplicationCommandOptionType.Boolean,
+    })
+    update: boolean | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (update) {
+      await runManualUpdate(interaction, { restartIfUpToDate: true });
+      return;
+    }
 
+    await editEphemeral(interaction, "Restarting bot…");
     void requestRestart(`discord:${interaction.user.id}`);
+  }
+
+  @Slash({
+    description: "Pull git updates, rebuild, and restart",
+    name: "update",
+  })
+  @Guard(DeferEphemeral, requirePermission("admin.update"))
+  async update(interaction: CommandInteraction): Promise<void> {
+    await runManualUpdate(interaction, { restartIfUpToDate: false });
   }
 
   @Slash({
     description: "Run JavaScript on the server and return the result",
     name: "eval",
   })
-  @Guard(DeferEphemeral)
+  @Guard(DeferEphemeral, requirePermission("admin.eval"))
   async eval(
     @SlashOption({
       description: "JavaScript to execute (supports await)",
@@ -78,7 +100,7 @@ export class AdminCommands {
     description: "Query or modify the SQLite database",
     name: "db",
   })
-  @Guard(DeferEphemeral)
+  @Guard(DeferEphemeral, requirePermission("admin.db"))
   async db(
     @SlashChoice(...DB_ACTIONS)
     @SlashOption({
@@ -118,7 +140,7 @@ export class AdminCommands {
   }
 
   @Slash({ description: "Bot health and runtime stats", name: "status" })
-  @Guard(DeferEphemeral)
+  @Guard(DeferEphemeral, requirePermission("admin.status"))
   async status(interaction: CommandInteraction): Promise<void> {
     const { config } = getModuleContext();
     const youtube = getYoutubePoller()?.getStatus();
@@ -146,6 +168,54 @@ export class AdminCommands {
     }
 
     await editEphemeral(interaction, lines.join("\n"));
+  }
+}
+
+async function runManualUpdate(
+  interaction: CommandInteraction,
+  options: { restartIfUpToDate: boolean },
+): Promise<void> {
+  const updater = getGitUpdater();
+  if (!updater) {
+    await editEphemeral(interaction, "Git updater is not available.");
+    return;
+  }
+
+  await editEphemeral(interaction, "Checking for updates…");
+  const result = await updater.checkForUpdates();
+
+  if (result.status === "started") {
+    await editEphemeral(interaction, "Update in progress — restarting bot…");
+    return;
+  }
+
+  if (result.status === "up_to_date") {
+    if (options.restartIfUpToDate) {
+      await editEphemeral(
+        interaction,
+        "Already up to date. Restarting bot…",
+      );
+      void requestRestart(`discord:${interaction.user.id}:update`);
+      return;
+    }
+
+    await editEphemeral(interaction, "Already up to date.");
+    return;
+  }
+
+  await editEphemeral(interaction, formatUpdateResult(result));
+}
+
+function formatUpdateResult(result: UpdateResult): string {
+  switch (result.status) {
+    case "busy":
+      return "An update or restart is already in progress.";
+    case "not_git":
+      return "This install is not a git repository.";
+    case "failed":
+      return `Update failed: ${result.message}`;
+    default:
+      return "Update could not be started.";
   }
 }
 

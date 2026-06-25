@@ -18,6 +18,7 @@ export interface AppConfig {
   gitBranch: string;
   youtubeCommunityPostChecksEnabled: boolean;
   botAdminUserIds: readonly string[];
+  botOwnerUserId: string | null;
 }
 
 function requireEnv(name: string): string {
@@ -87,5 +88,6 @@ export function loadConfig(): AppConfig {
     youtubeCommunityPostChecksEnabled:
       process.env.YOUTUBE_COMMUNITY_POST_CHECKS_ENABLED === "true",
     botAdminUserIds: parseBotAdminUserIds(process.env.BOT_ADMIN_USER_IDS),
+    botOwnerUserId: process.env.BOT_OWNER_USER_ID?.trim() || null,
   };
 }

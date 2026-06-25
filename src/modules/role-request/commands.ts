@@ -15,7 +15,8 @@ import {
   SlashOption,
 } from "discordx";
 
-import { AllowedGuildOnly, ManageRolesOnly } from "../../core/guards.js";
+import { AllowedGuildOnly } from "../../core/guards.js";
+import { CommandPermission } from "../../core/permissions/index.js";
 import { getModuleContext } from "../../core/module-loader.js";
 import { bot } from "../../core/bot.js";
 import {
@@ -138,7 +139,7 @@ async function refreshPanelOrReply(
 
 @Discord()
 @SlashGroup({ description: "Self-assignable role panels", name: "roles" })
-@Guard(AllowedGuildOnly, ManageRolesOnly)
+@Guard(AllowedGuildOnly, CommandPermission)
 export class RoleRequestCommands {
   @Slash({
     description: "Set the channel for the role request panel and post it",
