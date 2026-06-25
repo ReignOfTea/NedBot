@@ -1,5 +1,11 @@
 import { log } from "./log.js";
 import type { YoutubeContentAlert } from "./types.js";
+import {
+  isYoutubeQuotaExceededError,
+  isYoutubeQuotaPaused,
+  pauseYoutubeQuotaUntilDailyReset,
+  YoutubeQuotaExceededError,
+} from "./youtube-quota.js";
 
 export interface YoutubeChannelInfo {
   id: string;
@@ -90,6 +96,12 @@ export class YoutubeApiClient {
     path: string,
     params: Record<string, string>,
   ): Promise<T> {
+    if (isYoutubeQuotaPaused()) {
+      throw new YoutubeQuotaExceededError(
+        "YouTube API quota pause is active until the daily reset",
+      );
+    }
+
     const url = new URL(`${YOUTUBE_API_BASE}/${path}`);
     url.searchParams.set("key", this.apiKey);
     for (const [key, value] of Object.entries(params)) {
@@ -99,6 +111,13 @@ export class YoutubeApiClient {
     const response = await fetch(url);
     if (!response.ok) {
       const body = await response.text();
+      if (response.status === 403 && isQuotaExceededResponse(body)) {
+        const resumeAt = pauseYoutubeQuotaUntilDailyReset();
+        throw new YoutubeQuotaExceededError(
+          `YouTube API daily quota exceeded — paused until ${resumeAt.toISOString()}`,
+        );
+      }
+
       throw new Error(`YouTube API error (${response.status}): ${body}`);
     }
 
@@ -196,6 +215,9 @@ export class YoutubeApiClient {
       try {
         playlistVideoIds = await this.fetchPlaylistVideoIds(uploadsPlaylistId);
       } catch (error) {
+        if (isYoutubeQuotaExceededError(error)) {
+          throw error;
+        }
         log.warn(
           { err: error, channelId },
           `Uploads playlist fetch failed: ${formatApiError(error)}`,
@@ -263,6 +285,9 @@ export class YoutubeApiClient {
 
       return data.items?.[0] ?? null;
     } catch (error) {
+      if (isYoutubeQuotaExceededError(error)) {
+        throw error;
+      }
       log.warn(
         { err: error, channelId },
         `Channel metadata fetch failed: ${formatApiError(error)}`,
@@ -285,6 +310,9 @@ export class YoutubeApiClient {
 
       return data.items ?? [];
     } catch (error) {
+      if (isYoutubeQuotaExceededError(error)) {
+        throw error;
+      }
       log.warn(
         { err: error, channelId },
         `Community post check failed: ${formatApiError(error)}`,
@@ -331,6 +359,9 @@ export class YoutubeApiClient {
         (videosData.items ?? []).map((video) => [video.id, video]),
       );
     } catch (error) {
+      if (isYoutubeQuotaExceededError(error)) {
+        throw error;
+      }
       log.warn(
         { err: error, channelId },
         `Video metadata fetch failed: ${formatApiError(error)}`,
@@ -346,6 +377,9 @@ export class YoutubeApiClient {
     try {
       return await this.getLiveStreamFromApi(videoId, channelId);
     } catch (error) {
+      if (isYoutubeQuotaExceededError(error)) {
+        throw error;
+      }
       log.warn(
         { err: error, videoId },
         `videos.list failed, using oEmbed fallback: ${formatApiError(error)}`,
@@ -586,6 +620,14 @@ function formatApiError(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function isQuotaExceededResponse(body: string): boolean {
+  return (
+    body.includes("quotaExceeded") ||
+    body.includes("youtube.quota") ||
+    body.includes("exceeded your")
+  );
 }
 
 function parseIso8601Duration(duration: string | undefined): number {

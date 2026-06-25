@@ -5,7 +5,7 @@ import {
 import { Discord, Guard, Slash, SlashChoice, SlashOption } from "discordx";
 
 import { bot } from "./bot.js";
-import { createDbShell, type DbShellRowOptions } from "./db-shell.js";
+import { createDbShell, KNOWN_DB_TABLES, type DbShellRowOptions } from "./db-shell.js";
 import { AdministratorOnly, AllowedGuildOnly } from "./guards.js";
 import { editEphemeral, DeferEphemeral } from "./interactions.js";
 import { requestRestart } from "./lifecycle.js";
@@ -86,6 +86,7 @@ export class AdminCommands {
       type: ApplicationCommandOptionType.String,
     })
     action: DbAction,
+    @SlashChoice(...KNOWN_DB_TABLES)
     @SlashOption({
       description: "Table name",
       name: "table",

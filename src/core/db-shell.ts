@@ -14,6 +14,9 @@ const TABLE_PRIMARY_KEYS: Record<string, string | string[]> = {
   audit_log_settings: "guild_id",
 };
 
+/** Tables exposed in /db slash command choices. */
+export const KNOWN_DB_TABLES = Object.keys(TABLE_PRIMARY_KEYS).sort();
+
 export interface DbShellRowOptions {
   limit?: number;
   offset?: number;

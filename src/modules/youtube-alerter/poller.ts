@@ -14,6 +14,13 @@ import { log } from "./log.js";
 import { computeYoutubePollIntervalMs } from "./poll-interval.js";
 import type { YoutubeContentAlert } from "./types.js";
 import { YoutubeApiClient } from "./youtube-api.js";
+import {
+  clearYoutubeQuotaPauseIfExpired,
+  getYoutubeQuotaPausedIntervalMs,
+  isYoutubeQuotaExceededError,
+  isYoutubeQuotaPaused,
+  noteYoutubeQuotaPause,
+} from "./youtube-quota.js";
 
 export interface SyncResult {
   checked: number;
@@ -63,14 +70,16 @@ export class YoutubePoller {
   }
 
   private applyPollInterval(): void {
+    clearYoutubeQuotaPauseIfExpired();
+
+    const pausedIntervalMs = getYoutubeQuotaPausedIntervalMs();
     const channelCount = getDistinctYoutubeChannelIdsForGuild(
       this.db,
       this.guildId,
     ).length;
-    const nextMs = computeYoutubePollIntervalMs(
-      channelCount,
-      this.quotaBudgetPerDay,
-    );
+    const nextMs =
+      pausedIntervalMs ??
+      computeYoutubePollIntervalMs(channelCount, this.quotaBudgetPerDay);
 
     if (this.interval && nextMs === this.pollIntervalMs) {
       return;
@@ -81,15 +90,28 @@ export class YoutubePoller {
     }
 
     this.pollIntervalMs = nextMs;
-    log.info(
-      {
-        intervalSeconds: nextMs / 1000,
-        channelCount,
-        quotaBudgetPerDay: this.quotaBudgetPerDay,
-        guildId: this.guildId,
-      },
-      "Polling interval updated",
-    );
+
+    if (pausedIntervalMs !== null) {
+      noteYoutubeQuotaPause();
+      log.info(
+        {
+          intervalSeconds: nextMs / 1000,
+          guildId: this.guildId,
+          paused: true,
+        },
+        "YouTube polling paused until quota reset",
+      );
+    } else {
+      log.info(
+        {
+          intervalSeconds: nextMs / 1000,
+          channelCount,
+          quotaBudgetPerDay: this.quotaBudgetPerDay,
+          guildId: this.guildId,
+        },
+        "Polling interval updated",
+      );
+    }
 
     this.interval = setInterval(() => void this.poll(), nextMs);
   }
@@ -119,6 +141,12 @@ export class YoutubePoller {
       posts: 0,
       alerted: 0,
     };
+
+    clearYoutubeQuotaPauseIfExpired();
+    if (isYoutubeQuotaPaused()) {
+      noteYoutubeQuotaPause();
+      return result;
+    }
 
     const channelIds = getDistinctYoutubeChannelIdsForGuild(
       this.db,
@@ -158,6 +186,12 @@ export class YoutubePoller {
           );
         }
       } catch (error) {
+        if (isYoutubeQuotaExceededError(error)) {
+          noteYoutubeQuotaPause();
+          this.applyPollInterval();
+          break;
+        }
+
         log.error({ err: error, channelId }, "Failed to check channel");
       }
     }
