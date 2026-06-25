@@ -1,5 +1,14 @@
-/** Known permission keys. Wildcards like `youtube.*` grant every key under that prefix. */
+/** Known permission keys. Groups like `core` or wildcards like `youtube.*` grant every key under that prefix. */
 export const PERMISSION_CATALOG: Readonly<Record<string, string>> = {
+  core: "All core commands",
+  admin: "All admin commands",
+  youtube: "All /youtube commands",
+  rss: "All /rss commands",
+  x: "All /x commands",
+  audit: "All /audit commands",
+  roles: "All /roles commands",
+  mod: "All /mod commands",
+
   "core.ping": "Use /ping",
 
   "admin.restart": "Restart the bot (/restart)",
@@ -97,7 +106,9 @@ export function listPermissionKeysForGroup(
   group: PermissionCatalogGroup,
 ): string[] {
   return PERMISSION_KEYS.filter(
-    (key) => key.startsWith(`${group}.`) || key === group,
+    (key) =>
+      key.startsWith(`${group}.`) &&
+      !key.endsWith(".*"),
   );
 }
 
@@ -108,13 +119,18 @@ export function formatPermissionCatalogOverview(): string {
   return [
     "**Permission catalog**",
     "",
-    "Grant a wildcard to cover a whole module, e.g. `mod.*` or `youtube.*`.",
+    "Grant a **group** (`core`, `mod`, `youtube`, …) to cover all commands in that module.",
+    "You can also use wildcards like `mod.*` or individual keys like `mod.kick`.",
+    "",
+    "**Groups**",
+    PERMISSION_CATALOG_GROUPS.map(
+      (group) => `- \`${group}\` — ${PERMISSION_CATALOG[group]}`,
+    ).join("\n"),
     "",
     "**Wildcards**",
     wildcards.map((key) => `- \`${key}\` — ${PERMISSION_CATALOG[key]}`).join("\n"),
     "",
-    "**Sections** (use `/perms catalog group:<name>`)",
-    PERMISSION_CATALOG_GROUPS.map((group) => `- \`${group}\``).join("\n"),
+    "Use `/perms catalog group:<name>` to list every key in a section.",
   ].join("\n");
 }
 

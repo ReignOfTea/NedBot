@@ -247,10 +247,10 @@ Command access is controlled per Discord role. The owner (`BOT_OWNER_USER_ID`) a
 
 1. Set `BOT_OWNER_USER_ID` in `.env`.
 2. Use `/perms catalog` to see permission keys (e.g. `youtube.*`, `admin.restart`).
-3. Grant permissions: `/perms grant role:@Moderators permission:youtube.*`
+3. Grant permissions: `/perms grant role:@Moderators permission:mod` (or `mod.*`, or `mod.kick`)
 4. List a role's permissions: `/perms list role:@Moderators`
 
-Wildcard grants work: `admin.*` covers all admin commands; `youtube.*` covers all `/youtube` subcommands.
+Group names (`core`, `mod`, `youtube`, …) cover every command in that module. Wildcards like `admin.*` work the same way.
 
 ### Admin commands
 

@@ -1,6 +1,7 @@
 import type { CommandInteraction } from "discord.js";
 
 import { getModuleContext } from "../module-loader.js";
+import { isPermissionCatalogGroup } from "./registry.js";
 import { getPermissionsForRoles } from "./database.js";
 
 function getMemberRoleIds(interaction: CommandInteraction): string[] {
@@ -34,6 +35,10 @@ export function hasLegacyBotAdmin(userId: string): boolean {
 function permissionMatches(granted: string, required: string): boolean {
   if (granted === required || granted === "*") {
     return true;
+  }
+
+  if (isPermissionCatalogGroup(granted)) {
+    return required.startsWith(`${granted}.`);
   }
 
   if (granted.endsWith(".*")) {
