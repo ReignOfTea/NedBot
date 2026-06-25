@@ -53,6 +53,7 @@ export const OwnerOnly: GuardFunction<CommandInteraction> = async (
   interaction,
   _client,
   next,
+  _data,
 ) => {
   const { config } = getModuleContext();
 

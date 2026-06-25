@@ -17,6 +17,27 @@ export function isIgnorableInteractionError(error: unknown): boolean {
   );
 }
 
+export function isCommandInteraction(value: unknown): value is CommandInteraction {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "isChatInputCommand" in value &&
+    typeof (value as CommandInteraction).isChatInputCommand === "function"
+  );
+}
+
+/** discordx may pass (optionValues..., interaction, client, data) — find the interaction. */
+export function resolveInteraction(...args: unknown[]): CommandInteraction {
+  for (let index = args.length - 1; index >= 0; index--) {
+    const arg = args[index];
+    if (isCommandInteraction(arg)) {
+      return arg;
+    }
+  }
+
+  throw new Error("Could not resolve slash command interaction");
+}
+
 /** Split text into Discord-safe message chunks. */
 export function chunkDiscordMessages(
   text: string,
@@ -67,8 +88,16 @@ function formatEphemeralPage(content: string, index: number, total: number): str
   return `${body}${footer}`;
 }
 
-/** Send paginated ephemeral content via editReply + followUp. */
-export async function replyEphemeralPaginated(
+function truncateContent(content: string): string {
+  if (content.length <= DISCORD_EPHEMERAL_PAGE_SIZE) {
+    return content;
+  }
+
+  return `${content.slice(0, DISCORD_EPHEMERAL_PAGE_SIZE - 20)}… (truncated)`;
+}
+
+/** Send ephemeral content; single-page replies skip defer to avoid stuck "thinking". */
+export async function sendEphemeralContent(
   interaction: CommandInteraction,
   content: string,
 ): Promise<void> {
@@ -78,38 +107,38 @@ export async function replyEphemeralPaginated(
     return;
   }
 
-  await editEphemeral(
-    interaction,
-    formatEphemeralPage(chunks[0]!, 0, chunks.length),
-  );
+  const first = formatEphemeralPage(chunks[0]!, 0, chunks.length);
+
+  if (!interaction.deferred && !interaction.replied) {
+    if (chunks.length === 1) {
+      await interaction.reply({
+        content: truncateContent(first),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
+
+  await interaction.editReply({ content: truncateContent(first) });
 
   for (let index = 1; index < chunks.length; index++) {
     await interaction.followUp({
-      content: formatEphemeralPage(chunks[index]!, index, chunks.length),
+      content: truncateContent(formatEphemeralPage(chunks[index]!, index, chunks.length)),
       flags: MessageFlags.Ephemeral,
     });
   }
 }
 
-/**
- * Defer ephemerally, run fn, and always send a paginated reply (or an error).
- * Use instead of DeferEphemeral + manual editReply when responses may be large.
- */
+/** Defer ephemerally, run fn, and always send a reply (or an error). */
 export async function runEphemeralCommand(
   interaction: CommandInteraction,
   fn: () => Promise<string> | string,
 ): Promise<void> {
   try {
-    if (
-      interaction.isChatInputCommand() &&
-      !interaction.deferred &&
-      !interaction.replied
-    ) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    }
-
     const content = await fn();
-    await replyEphemeralPaginated(interaction, content);
+    await sendEphemeralContent(interaction, content);
   } catch (error) {
     coreLog.warn({ err: error }, "Ephemeral command failed");
     const message =
@@ -153,10 +182,7 @@ export async function editEphemeral(
   interaction: CommandInteraction,
   content: string,
 ): Promise<void> {
-  const safeContent =
-    content.length > DISCORD_EPHEMERAL_PAGE_SIZE
-      ? `${content.slice(0, DISCORD_EPHEMERAL_PAGE_SIZE - 20)}… (truncated)`
-      : content;
+  const safeContent = truncateContent(content);
 
   try {
     if (interaction.deferred || interaction.replied) {
@@ -169,9 +195,18 @@ export async function editEphemeral(
       flags: MessageFlags.Ephemeral,
     });
   } catch (error) {
+    coreLog.warn({ err: error }, "editEphemeral failed");
     if (isIgnorableInteractionError(error)) {
       return;
     }
     throw error;
   }
+}
+
+/** @deprecated Use sendEphemeralContent */
+export async function replyEphemeralPaginated(
+  interaction: CommandInteraction,
+  content: string,
+): Promise<void> {
+  await sendEphemeralContent(interaction, content);
 }

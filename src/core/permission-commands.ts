@@ -16,6 +16,7 @@ import { AllowedGuildOnly } from "./guards.js";
 import {
   DeferEphemeral,
   editEphemeral,
+  resolveInteraction,
   runEphemeralCommand,
 } from "./interactions.js";
 import { getModuleContext } from "./module-loader.js";
@@ -240,13 +241,17 @@ export class PermissionCommands {
     _section: string | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    await runEphemeralCommand(interaction, () => {
-      if (!interaction.isChatInputCommand()) {
+    const resolved = resolveInteraction(_section, interaction);
+
+    await runEphemeralCommand(resolved, () => {
+      if (!resolved.isChatInputCommand()) {
         return "This command can only be used as a slash command.";
       }
 
       const section =
-        interaction.options.getString("section") ?? _section ?? undefined;
+        resolved.options.getString("section") ??
+        resolved.options.getString("group") ??
+        (typeof _section === "string" ? _section : undefined);
 
       if (section && !isPermissionCatalogGroup(section)) {
         return `Unknown section \`${section}\`. Valid sections: ${PERMISSION_CATALOG_GROUPS.join(", ")}.`;
