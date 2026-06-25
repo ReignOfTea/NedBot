@@ -3,6 +3,8 @@ import { Discord, Guard, Slash } from "discordx";
 
 import { AllowedGuildOnly } from "./guards.js";
 
+import "./admin-commands.js";
+
 @Discord()
 @Guard(AllowedGuildOnly)
 export class CoreCommands {

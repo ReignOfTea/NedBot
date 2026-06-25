@@ -121,6 +121,8 @@ export class YoutubeCommands {
         postChannelId: postChannel?.id,
       });
 
+      getYoutubePoller()?.rescheduleInterval();
+
       if (pingRole) {
         addSubscriptionPing(db, interaction.guildId!, channel.id, {
           type: "role",
@@ -319,6 +321,8 @@ export class YoutubeCommands {
         });
         return;
       }
+
+      getYoutubePoller()?.rescheduleInterval();
 
       await interaction.editReply({
         content: `Unsubscribed from **${channel.title}**.`,

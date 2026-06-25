@@ -11,6 +11,7 @@ import {
   updateLastAlertId,
 } from "./database.js";
 import { log } from "./log.js";
+import { computeYoutubePollIntervalMs } from "./poll-interval.js";
 import type { YoutubeContentAlert } from "./types.js";
 import { YoutubeApiClient } from "./youtube-api.js";
 
@@ -24,12 +25,13 @@ export interface SyncResult {
 
 export class YoutubePoller {
   private interval: ReturnType<typeof setInterval> | null = null;
+  private pollIntervalMs = 0;
   private api: YoutubeApiClient | null = null;
 
   constructor(
     private readonly db: Database,
     private readonly getClient: () => ModuleContext["client"],
-    private readonly pollIntervalMs: number,
+    private readonly quotaBudgetPerDay: number,
     private readonly apiKey: string,
     private readonly guildId: string,
   ) {}
@@ -40,13 +42,8 @@ export class YoutubePoller {
     }
 
     this.api = new YoutubeApiClient(this.apiKey);
-    log.info(
-      { intervalSeconds: this.pollIntervalMs / 1000, guildId: this.guildId },
-      "Polling started",
-    );
-
+    this.applyPollInterval();
     void this.poll();
-    this.interval = setInterval(() => void this.poll(), this.pollIntervalMs);
   }
 
   stop(): void {
@@ -54,7 +51,47 @@ export class YoutubePoller {
       clearInterval(this.interval);
       this.interval = null;
     }
+    this.pollIntervalMs = 0;
     this.api = null;
+  }
+
+  rescheduleInterval(): void {
+    if (!this.api) {
+      return;
+    }
+    this.applyPollInterval();
+  }
+
+  private applyPollInterval(): void {
+    const channelCount = getDistinctYoutubeChannelIdsForGuild(
+      this.db,
+      this.guildId,
+    ).length;
+    const nextMs = computeYoutubePollIntervalMs(
+      channelCount,
+      this.quotaBudgetPerDay,
+    );
+
+    if (this.interval && nextMs === this.pollIntervalMs) {
+      return;
+    }
+
+    if (this.interval) {
+      clearInterval(this.interval);
+    }
+
+    this.pollIntervalMs = nextMs;
+    log.info(
+      {
+        intervalSeconds: nextMs / 1000,
+        channelCount,
+        quotaBudgetPerDay: this.quotaBudgetPerDay,
+        guildId: this.guildId,
+      },
+      "Polling interval updated",
+    );
+
+    this.interval = setInterval(() => void this.poll(), nextMs);
   }
 
   async syncNow(): Promise<SyncResult> {
@@ -71,6 +108,7 @@ export class YoutubePoller {
     }
 
     await this.runChecks({ force: false });
+    this.applyPollInterval();
   }
 
   private async runChecks(options: { force: boolean }): Promise<SyncResult> {
@@ -94,16 +132,12 @@ export class YoutubePoller {
       result.checked += 1;
 
       try {
-        const [live, video, post] = await Promise.all([
-          this.api!.getLiveStream(channelId),
-          this.api!.getLatestUpload(channelId),
-          this.api!.getLatestCommunityPost(channelId),
-        ]);
+        const { live, upload, post } = await this.api!.checkChannel(channelId);
 
         if (live) {
           result.live += 1;
         }
-        if (video) {
+        if (upload) {
           result.videos += 1;
         }
         if (post) {
@@ -112,7 +146,7 @@ export class YoutubePoller {
 
         const alerts: YoutubeContentAlert[] = [
           ...(live ? [live] : []),
-          ...(video ? [video] : []),
+          ...(upload ? [upload] : []),
           ...(post ? [post] : []),
         ];
 

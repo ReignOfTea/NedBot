@@ -64,3 +64,21 @@ export const ManageRolesOnly: GuardFunction<CommandInteraction> = async (
 
   await next();
 };
+
+export const AdministratorOnly: GuardFunction<CommandInteraction> = async (
+  interaction,
+  _client,
+  next,
+) => {
+  if (
+    !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
+  ) {
+    await interaction.reply({
+      content: "You need the **Administrator** permission to use this command.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await next();
+};

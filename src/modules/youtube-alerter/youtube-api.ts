@@ -8,6 +8,12 @@ export interface YoutubeChannelInfo {
 
 export type YoutubeLiveStream = YoutubeContentAlert & { type: "live" };
 
+export interface ChannelCheckResult {
+  live: YoutubeLiveStream | null;
+  upload: YoutubeContentAlert | null;
+  post: YoutubeContentAlert | null;
+}
+
 interface YoutubeApiListResponse<T> {
   items?: T[];
 }
@@ -161,69 +167,113 @@ export class YoutubeApiClient {
     };
   }
 
-  async getLiveStream(channelId: string): Promise<YoutubeLiveStream | null> {
-    const videoId = await this.resolveLiveVideoId(channelId);
-    if (videoId) {
-      const stream = await this.tryConfirmLiveStream(videoId, channelId);
-      if (stream) {
-        return stream;
+  async checkChannel(channelId: string): Promise<ChannelCheckResult> {
+    const result: ChannelCheckResult = {
+      live: null,
+      upload: null,
+      post: null,
+    };
+
+    const [scrapedLiveVideoId, channelItem, activities] = await Promise.all([
+      this.resolveLiveVideoId(channelId),
+      this.fetchChannelContentDetails(channelId),
+      this.fetchActivities(channelId),
+    ]);
+
+    for (const activity of activities) {
+      const alert = this.mapActivityToPostAlert(activity, channelId);
+      if (alert) {
+        result.post = alert;
+        break;
       }
     }
 
-    const fallback = await this.getLiveStreamViaUploads(channelId);
-    return fallback;
-  }
+    const uploadsPlaylistId =
+      channelItem?.contentDetails?.relatedPlaylists?.uploads ?? null;
 
-  async getLatestUpload(channelId: string): Promise<YoutubeContentAlert | null> {
-    try {
-      const uploadsPlaylistId = await this.getUploadsPlaylistId(channelId);
-      if (!uploadsPlaylistId) {
-        return null;
+    let playlistVideoIds: string[] = [];
+    if (uploadsPlaylistId) {
+      try {
+        playlistVideoIds = await this.fetchPlaylistVideoIds(uploadsPlaylistId);
+      } catch (error) {
+        log.warn(
+          { err: error, channelId },
+          `Uploads playlist fetch failed: ${formatApiError(error)}`,
+        );
       }
+    }
 
-      const playlistData = await this.fetchApi<
-        YoutubeApiListResponse<YoutubePlaylistItem>
-      >("playlistItems", {
-        part: "snippet",
-        playlistId: uploadsPlaylistId,
-        maxResults: "8",
-      });
+    const videoIds = [
+      ...new Set([
+        ...(scrapedLiveVideoId ? [scrapedLiveVideoId] : []),
+        ...playlistVideoIds,
+      ]),
+    ];
 
-      const videoIds =
-        playlistData.items
-          ?.map((item) => item.snippet?.resourceId?.videoId)
-          .filter((id): id is string => Boolean(id)) ?? [];
+    const videosById = await this.fetchVideosById(videoIds, channelId);
 
-      if (videoIds.length === 0) {
-        return null;
+    if (scrapedLiveVideoId) {
+      const scrapedVideo = videosById.get(scrapedLiveVideoId);
+      if (scrapedVideo) {
+        result.live = this.mapVideoToLiveStream(scrapedVideo, channelId);
+      } else {
+        result.live = await this.tryConfirmLiveStream(
+          scrapedLiveVideoId,
+          channelId,
+        );
       }
+    }
 
-      const videosData = await this.fetchApi<
-        YoutubeApiListResponse<YoutubeVideoItem>
-      >("videos", {
-        part: "snippet,contentDetails,liveStreamingDetails",
-        id: videoIds.join(","),
-      });
-
-      for (const video of videosData.items ?? []) {
-        const alert = this.mapVideoToUploadAlert(video, channelId);
-        if (alert) {
-          return alert;
+    if (!result.live) {
+      for (const videoId of playlistVideoIds) {
+        const video = videosById.get(videoId);
+        if (!video) {
+          continue;
+        }
+        const stream = this.mapVideoToLiveStream(video, channelId);
+        if (stream) {
+          result.live = stream;
+          break;
         }
       }
+    }
+
+    for (const videoId of playlistVideoIds) {
+      const video = videosById.get(videoId);
+      if (!video) {
+        continue;
+      }
+      const alert = this.mapVideoToUploadAlert(video, channelId);
+      if (alert) {
+        result.upload = alert;
+        break;
+      }
+    }
+
+    return result;
+  }
+
+  private async fetchChannelContentDetails(
+    channelId: string,
+  ): Promise<YoutubeChannelItem | null> {
+    try {
+      const data = await this.fetchApi<
+        YoutubeApiListResponse<YoutubeChannelItem>
+      >("channels", { part: "contentDetails", id: channelId });
+
+      return data.items?.[0] ?? null;
     } catch (error) {
       log.warn(
         { err: error, channelId },
-        "Latest upload check failed",
+        `Channel metadata fetch failed: ${formatApiError(error)}`,
       );
+      return null;
     }
-
-    return null;
   }
 
-  async getLatestCommunityPost(
+  private async fetchActivities(
     channelId: string,
-  ): Promise<YoutubeContentAlert | null> {
+  ): Promise<YoutubeActivityItem[]> {
     try {
       const data = await this.fetchApi<
         YoutubeApiListResponse<YoutubeActivityItem>
@@ -233,32 +283,60 @@ export class YoutubeApiClient {
         maxResults: "15",
       });
 
-      for (const activity of data.items ?? []) {
-        const alert = this.mapActivityToPostAlert(activity, channelId);
-        if (alert) {
-          return alert;
-        }
-      }
+      return data.items ?? [];
     } catch (error) {
       log.warn(
         { err: error, channelId },
-        "Community post check failed",
+        `Community post check failed: ${formatApiError(error)}`,
       );
+      return [];
     }
-
-    return null;
   }
 
-  private async getUploadsPlaylistId(
-    channelId: string,
-  ): Promise<string | null> {
-    const channelData = await this.fetchApi<
-      YoutubeApiListResponse<YoutubeChannelItem>
-    >("channels", { part: "contentDetails", id: channelId });
+  private async fetchPlaylistVideoIds(
+    uploadsPlaylistId: string,
+  ): Promise<string[]> {
+    const playlistData = await this.fetchApi<
+      YoutubeApiListResponse<YoutubePlaylistItem>
+    >("playlistItems", {
+      part: "snippet",
+      playlistId: uploadsPlaylistId,
+      maxResults: "10",
+    });
 
     return (
-      channelData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads ?? null
+      playlistData.items
+        ?.map((item) => item.snippet?.resourceId?.videoId)
+        .filter((id): id is string => Boolean(id)) ?? []
     );
+  }
+
+  private async fetchVideosById(
+    videoIds: string[],
+    channelId: string,
+  ): Promise<Map<string, YoutubeVideoItem>> {
+    if (videoIds.length === 0) {
+      return new Map();
+    }
+
+    try {
+      const videosData = await this.fetchApi<
+        YoutubeApiListResponse<YoutubeVideoItem>
+      >("videos", {
+        part: "snippet,contentDetails,liveStreamingDetails",
+        id: videoIds.join(","),
+      });
+
+      return new Map(
+        (videosData.items ?? []).map((video) => [video.id, video]),
+      );
+    } catch (error) {
+      log.warn(
+        { err: error, channelId },
+        `Video metadata fetch failed: ${formatApiError(error)}`,
+      );
+      return new Map();
+    }
   }
 
   private async tryConfirmLiveStream(
@@ -270,7 +348,7 @@ export class YoutubeApiClient {
     } catch (error) {
       log.warn(
         { err: error, videoId },
-        "videos.list failed, using oEmbed fallback",
+        `videos.list failed, using oEmbed fallback: ${formatApiError(error)}`,
       );
       return this.getLiveStreamFromOembed(videoId, channelId);
     }
@@ -353,55 +431,6 @@ export class YoutubeApiClient {
 
     const fallback = html.match(/"videoId":"([\w-]{11})"/);
     return fallback?.[1] ?? null;
-  }
-
-  private async getLiveStreamViaUploads(
-    channelId: string,
-  ): Promise<YoutubeLiveStream | null> {
-    try {
-      const uploadsPlaylistId = await this.getUploadsPlaylistId(channelId);
-      if (!uploadsPlaylistId) {
-        return null;
-      }
-
-      const playlistData = await this.fetchApi<
-        YoutubeApiListResponse<YoutubePlaylistItem>
-      >("playlistItems", {
-        part: "snippet",
-        playlistId: uploadsPlaylistId,
-        maxResults: "10",
-      });
-
-      const videoIds =
-        playlistData.items
-          ?.map((item) => item.snippet?.resourceId?.videoId)
-          .filter((id): id is string => Boolean(id)) ?? [];
-
-      if (videoIds.length === 0) {
-        return null;
-      }
-
-      const videosData = await this.fetchApi<
-        YoutubeApiListResponse<YoutubeVideoItem>
-      >("videos", {
-        part: "liveStreamingDetails,snippet",
-        id: videoIds.join(","),
-      });
-
-      for (const video of videosData.items ?? []) {
-        const stream = this.mapVideoToLiveStream(video, channelId);
-        if (stream) {
-          return stream;
-        }
-      }
-    } catch (error) {
-      log.warn(
-        { err: error, channelId },
-        "Uploads playlist fallback failed",
-      );
-    }
-
-    return null;
   }
 
   private async getLiveStreamFromApi(
@@ -550,6 +579,13 @@ export class YoutubeApiClient {
       url: `https://www.youtube.com/watch?v=${videoId}`,
     };
   }
+}
+
+function formatApiError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function parseIso8601Duration(duration: string | undefined): number {

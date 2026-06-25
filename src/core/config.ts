@@ -4,7 +4,7 @@ export interface AppConfig {
   botToken: string;
   youtubeApiKey: string;
   databasePath: string;
-  youtubePollIntervalMs: number;
+  youtubeQuotaBudgetPerDay: number;
   rssPollIntervalMs: number;
   isProduction: boolean;
   discordGuildId: string;
@@ -26,6 +26,16 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function parseQuotaBudget(raw: string | undefined): number {
+  const value = Number(raw ?? 8000);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      "YOUTUBE_QUOTA_BUDGET_PER_DAY must be a positive number",
+    );
+  }
+  return value;
+}
+
 export function loadConfig(): AppConfig {
   const xAuthToken = process.env.X_AUTH_TOKEN?.trim() || null;
   const xCt0 = process.env.X_CT0?.trim() || null;
@@ -34,8 +44,9 @@ export function loadConfig(): AppConfig {
     botToken: requireEnv("BOT_TOKEN"),
     youtubeApiKey: requireEnv("YOUTUBE_API_KEY"),
     databasePath: process.env.DATABASE_PATH ?? "./data/ned-bot.db",
-    youtubePollIntervalMs:
-      Number(process.env.YOUTUBE_POLL_INTERVAL_SECONDS ?? 120) * 1000,
+    youtubeQuotaBudgetPerDay: parseQuotaBudget(
+      process.env.YOUTUBE_QUOTA_BUDGET_PER_DAY,
+    ),
     rssPollIntervalMs:
       Number(process.env.RSS_POLL_INTERVAL_SECONDS ?? 300) * 1000,
     isProduction: process.env.NODE_ENV === "production",

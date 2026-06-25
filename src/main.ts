@@ -9,6 +9,7 @@ import {
   shutdownModules,
 } from "./core/module-loader.js";
 import { startGitUpdater } from "./core/git-updater.js";
+import { gracefulShutdown, registerShutdownHandler } from "./core/lifecycle.js";
 
 async function run(): Promise<void> {
   const config = loadConfig();
@@ -21,16 +22,23 @@ async function run(): Promise<void> {
 
   const gitUpdater = startGitUpdater(config, {
     onBeforeRestart: async () => {
-      await shutdownModules();
-      bot.destroy();
+      await gracefulShutdown();
     },
+  });
+
+  registerShutdownHandler(() => {
+    gitUpdater.stop();
+  });
+  registerShutdownHandler(async () => {
+    await shutdownModules();
+  });
+  registerShutdownHandler(() => {
+    bot.destroy();
   });
 
   const shutdown = async (signal: string) => {
     coreLog.info({ signal }, "Shutting down");
-    gitUpdater.stop();
-    await shutdownModules();
-    bot.destroy();
+    await gracefulShutdown();
     process.exit(0);
   };
 

@@ -13,7 +13,7 @@ const youtubeAlerterModule: BotModule = {
     const poller = new YoutubePoller(
       ctx.db,
       () => bot,
-      ctx.config.youtubePollIntervalMs,
+      ctx.config.youtubeQuotaBudgetPerDay,
       ctx.config.youtubeApiKey,
       ctx.config.discordGuildId,
     );
