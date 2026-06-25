@@ -29,7 +29,7 @@ Copy `.env.example` to `.env` and fill in the values below.
 4. Under **Privileged Gateway Intents**, you only need **Guilds** enabled (on by default).
 5. Open **OAuth2 → URL Generator**:
    - Scopes: `bot`, `applications.commands`
-   - Bot permissions: at minimum **Send Messages**, **Embed Links**, and **Use Slash Commands**
+   - Bot permissions: at minimum **Send Messages**, **Embed Links**, **Use Slash Commands**, **Kick Members**, **Ban Members**, **Moderate Members**, and **Manage Messages** (for `/mod`)
 6. Copy the generated invite URL, open it in a browser, and add the bot to your server.
 
 Set `DISCORD_GUILD_ID` in `.env` to that server's ID (right-click server → **Copy Server ID**, with Developer Mode enabled). The bot ignores all other servers, and slash commands are registered to this guild only so new commands appear within seconds of a restart.
@@ -119,6 +119,27 @@ Logs are written to `logs/pm2-out.log` and `logs/pm2-error.log`.
 - Raw channel ID (`UC...`)
 
 Poll interval is computed automatically from `YOUTUBE_QUOTA_BUDGET_PER_DAY` and the number of subscribed channels (~3 quota units per channel per poll).
+
+## Moderation
+
+Slash commands under `/mod` for kicks, bans, timeouts, warnings, and purges. Actions are logged by the audit-log module when configured.
+
+| Command | Permission | Description |
+|---------|------------|-------------|
+| `/mod kick` | `mod.kick` | Kick a member |
+| `/mod ban` | `mod.ban` | Ban a member (optional message delete days) |
+| `/mod unban` | `mod.unban` | Unban by user ID |
+| `/mod timeout` | `mod.timeout` | Timeout a member (minutes) |
+| `/mod untimeout` | `mod.untimeout` | Remove a timeout |
+| `/mod warn` | `mod.warn` | Add a warning (stored in SQLite) |
+| `/mod warnings` | `mod.warnings` | List warnings for a member |
+| `/mod delwarn` | `mod.delwarn` | Delete a warning by ID |
+| `/mod clearwarns` | `mod.clearwarns` | Clear all warnings for a member |
+| `/mod purge` | `mod.purge` | Bulk-delete messages in the current channel |
+
+Moderators cannot action members with equal or higher roles. The bot's highest role must be above the target's highest role.
+
+Grant access with `/perms grant role:@Moderators permission:mod.*`.
 
 ## Role Request
 

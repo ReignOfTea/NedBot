@@ -58,9 +58,102 @@ export const PERMISSION_CATALOG: Readonly<Record<string, string>> = {
   "roles.refresh": "Refresh role request panel",
   "roles.list": "List panel roles",
   "roles.*": "All /roles commands",
+
+  "mod.kick": "Kick members",
+  "mod.ban": "Ban members",
+  "mod.unban": "Unban users",
+  "mod.timeout": "Timeout members",
+  "mod.untimeout": "Remove member timeouts",
+  "mod.warn": "Warn members",
+  "mod.warnings": "List member warnings",
+  "mod.delwarn": "Delete a warning",
+  "mod.clearwarns": "Clear all warnings for a member",
+  "mod.purge": "Bulk-delete channel messages",
+  "mod.*": "All /mod commands",
 };
 
 export const PERMISSION_KEYS = Object.keys(PERMISSION_CATALOG).sort();
+
+export const PERMISSION_CATALOG_GROUPS = [
+  "core",
+  "admin",
+  "youtube",
+  "rss",
+  "x",
+  "audit",
+  "roles",
+  "mod",
+] as const;
+
+export type PermissionCatalogGroup = (typeof PERMISSION_CATALOG_GROUPS)[number];
+
+export function isPermissionCatalogGroup(
+  value: string,
+): value is PermissionCatalogGroup {
+  return (PERMISSION_CATALOG_GROUPS as readonly string[]).includes(value);
+}
+
+export function listPermissionKeysForGroup(
+  group: PermissionCatalogGroup,
+): string[] {
+  return PERMISSION_KEYS.filter(
+    (key) => key.startsWith(`${group}.`) || key === group,
+  );
+}
+
+const DISCORD_MESSAGE_LIMIT = 2000;
+
+export function formatPermissionCatalogOverview(): string {
+  const wildcards = PERMISSION_KEYS.filter((key) => key.endsWith(".*"));
+  return [
+    "**Permission catalog**",
+    "",
+    "Grant a wildcard to cover a whole module, e.g. `mod.*` or `youtube.*`.",
+    "",
+    "**Wildcards**",
+    wildcards.map((key) => `- \`${key}\` — ${PERMISSION_CATALOG[key]}`).join("\n"),
+    "",
+    "**Sections** (use `/perms catalog group:<name>`)",
+    PERMISSION_CATALOG_GROUPS.map((group) => `- \`${group}\``).join("\n"),
+  ].join("\n");
+}
+
+export function formatPermissionCatalogGroup(group: PermissionCatalogGroup): string {
+  const keys = listPermissionKeysForGroup(group);
+  const lines = keys.map((key) => {
+    const label = PERMISSION_CATALOG[key];
+    return `- \`${key}\`${label ? ` — ${label}` : ""}`;
+  });
+
+  return [`**${group}** permissions`, ...lines].join("\n");
+}
+
+/** Split text into Discord-safe message chunks. */
+export function chunkDiscordMessages(text: string, limit = DISCORD_MESSAGE_LIMIT): string[] {
+  if (text.length <= limit) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= limit) {
+      chunks.push(remaining);
+      break;
+    }
+
+    let splitAt = remaining.lastIndexOf("\n", limit);
+    if (splitAt <= 0) {
+      splitAt = limit;
+    }
+
+    chunks.push(remaining.slice(0, splitAt).trimEnd());
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+
+  return chunks;
+}
 
 export function isKnownPermission(key: string): boolean {
   return key in PERMISSION_CATALOG;

@@ -1,12 +1,14 @@
 import {
   ApplicationCommandOptionType,
   type CommandInteraction,
+  MessageFlags,
   type Role,
 } from "discord.js";
 import {
   Discord,
   Guard,
   Slash,
+  SlashChoice,
   SlashGroup,
   SlashOption,
 } from "discordx";
@@ -15,13 +17,17 @@ import { AllowedGuildOnly } from "./guards.js";
 import { DeferEphemeral, editEphemeral } from "./interactions.js";
 import { getModuleContext } from "./module-loader.js";
 import {
+  chunkDiscordMessages,
+  formatPermissionCatalogGroup,
+  formatPermissionCatalogOverview,
   grantRolePermission,
   isKnownPermission,
+  isPermissionCatalogGroup,
   listRolePermissions,
   listRolesWithPermission,
   OwnerOnly,
   PERMISSION_CATALOG,
-  PERMISSION_KEYS,
+  PERMISSION_CATALOG_GROUPS,
   revokeRolePermission,
 } from "./permissions/index.js";
 
@@ -217,15 +223,43 @@ export class PermissionCommands {
   @Slash({ description: "List all permission keys", name: "catalog" })
   @SlashGroup("perms")
   @Guard(DeferEphemeral)
-  async catalog(interaction: CommandInteraction): Promise<void> {
-    const lines = PERMISSION_KEYS.map((key) => {
-      const label = PERMISSION_CATALOG[key];
-      return `- \`${key}\`${label ? ` — ${label}` : ""}`;
-    });
+  async catalog(
+    @SlashChoice(...PERMISSION_CATALOG_GROUPS)
+    @SlashOption({
+      description: "Show only one section (admin, mod, youtube, …)",
+      name: "group",
+      required: false,
+      type: ApplicationCommandOptionType.String,
+    })
+    group: string | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    try {
+      const content =
+        group && isPermissionCatalogGroup(group)
+          ? formatPermissionCatalogGroup(group)
+          : formatPermissionCatalogOverview();
 
-    await editEphemeral(
-      interaction,
-      `**Permission catalog**\n${lines.join("\n")}`,
-    );
+      await sendEphemeralChunks(interaction, content);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to load permission catalog.";
+      await editEphemeral(interaction, message);
+    }
+  }
+}
+
+async function sendEphemeralChunks(
+  interaction: CommandInteraction,
+  content: string,
+): Promise<void> {
+  const chunks = chunkDiscordMessages(content);
+  await editEphemeral(interaction, chunks[0]!);
+
+  for (let index = 1; index < chunks.length; index++) {
+    await interaction.followUp({
+      content: chunks[index],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 }

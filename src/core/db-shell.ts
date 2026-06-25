@@ -12,6 +12,7 @@ const TABLE_PRIMARY_KEYS: Record<string, string | string[]> = {
   x_subscriptions: "id",
   x_push_state: "id",
   audit_log_settings: "guild_id",
+  moderation_warnings: "id",
 };
 
 /** Tables exposed in /db slash command choices. */
