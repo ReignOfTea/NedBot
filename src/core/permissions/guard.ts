@@ -2,6 +2,7 @@ import { MessageFlags, type CommandInteraction } from "discord.js";
 import type { GuardFunction } from "discordx";
 
 import { getModuleContext } from "../module-loader.js";
+import { editEphemeral } from "../interactions.js";
 import { hasPermission } from "./check.js";
 import { resolveCommandPermission } from "./registry.js";
 
@@ -56,19 +57,18 @@ export const OwnerOnly: GuardFunction<CommandInteraction> = async (
   const { config } = getModuleContext();
 
   if (!config.botOwnerUserId) {
-    await interaction.reply({
-      content:
-        "BOT_OWNER_USER_ID is not configured — only the owner can manage permissions.",
-      flags: MessageFlags.Ephemeral,
-    });
+    await editEphemeral(
+      interaction,
+      "BOT_OWNER_USER_ID is not configured — only the owner can manage permissions.",
+    );
     return;
   }
 
   if (interaction.user.id !== config.botOwnerUserId) {
-    await interaction.reply({
-      content: "Only the bot owner can manage permissions.",
-      flags: MessageFlags.Ephemeral,
-    });
+    await editEphemeral(
+      interaction,
+      "Only the bot owner can manage permissions.",
+    );
     return;
   }
 

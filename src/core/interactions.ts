@@ -26,10 +26,9 @@ export const DeferEphemeral: GuardFunction<CommandInteraction> = async (
     try {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     } catch (error) {
-      if (isIgnorableInteractionError(error)) {
-        return;
+      if (!isIgnorableInteractionError(error)) {
+        throw error;
       }
-      throw error;
     }
   }
 

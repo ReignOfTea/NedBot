@@ -33,11 +33,11 @@ import {
 
 @Discord()
 @SlashGroup({ description: "Manage bot command permissions by Discord role", name: "perms" })
-@Guard(AllowedGuildOnly, OwnerOnly)
+@Guard(AllowedGuildOnly)
 export class PermissionCommands {
   @Slash({ description: "Grant a permission to a role", name: "grant" })
   @SlashGroup("perms")
-  @Guard(DeferEphemeral)
+  @Guard(OwnerOnly, DeferEphemeral)
   async grant(
     @SlashOption({
       description: "Discord role",
@@ -86,7 +86,7 @@ export class PermissionCommands {
 
   @Slash({ description: "Revoke a permission from a role", name: "revoke" })
   @SlashGroup("perms")
-  @Guard(DeferEphemeral)
+  @Guard(OwnerOnly, DeferEphemeral)
   async revoke(
     @SlashOption({
       description: "Discord role",
@@ -134,7 +134,7 @@ export class PermissionCommands {
 
   @Slash({ description: "List permissions for a role", name: "list" })
   @SlashGroup("perms")
-  @Guard(DeferEphemeral)
+  @Guard(OwnerOnly, DeferEphemeral)
   async list(
     @SlashOption({
       description: "Discord role",
@@ -173,7 +173,7 @@ export class PermissionCommands {
     name: "roles",
   })
   @SlashGroup("perms")
-  @Guard(DeferEphemeral)
+  @Guard(OwnerOnly, DeferEphemeral)
   async roles(
     @SlashOption({
       description: "Permission key (see /perms catalog)",
@@ -222,7 +222,7 @@ export class PermissionCommands {
 
   @Slash({ description: "List all permission keys", name: "catalog" })
   @SlashGroup("perms")
-  @Guard(DeferEphemeral)
+  @Guard(OwnerOnly, DeferEphemeral)
   async catalog(
     @SlashChoice(...PERMISSION_CATALOG_GROUPS)
     @SlashOption({
@@ -235,9 +235,22 @@ export class PermissionCommands {
     interaction: CommandInteraction,
   ): Promise<void> {
     try {
+      if (!interaction.isChatInputCommand()) {
+        await editEphemeral(
+          interaction,
+          "This command can only be used as a slash command.",
+        );
+        return;
+      }
+
+      const section =
+        group ??
+        interaction.options.getString("group") ??
+        undefined;
+
       const content =
-        group && isPermissionCatalogGroup(group)
-          ? formatPermissionCatalogGroup(group)
+        section && isPermissionCatalogGroup(section)
+          ? formatPermissionCatalogGroup(section)
           : formatPermissionCatalogOverview();
 
       await sendEphemeralChunks(interaction, content);
@@ -254,11 +267,22 @@ async function sendEphemeralChunks(
   content: string,
 ): Promise<void> {
   const chunks = chunkDiscordMessages(content);
-  await editEphemeral(interaction, chunks[0]!);
+  const first = chunks[0]?.trim();
+  if (!first) {
+    await editEphemeral(interaction, "Permission catalog is empty.");
+    return;
+  }
+
+  await editEphemeral(interaction, first);
 
   for (let index = 1; index < chunks.length; index++) {
+    const chunk = chunks[index]?.trim();
+    if (!chunk) {
+      continue;
+    }
+
     await interaction.followUp({
-      content: chunks[index],
+      content: chunk,
       flags: MessageFlags.Ephemeral,
     });
   }
