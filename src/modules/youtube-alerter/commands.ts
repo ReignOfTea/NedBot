@@ -107,7 +107,10 @@ export class YoutubeCommands {
     }
 
     const { config, db } = getModuleContext();
-    const api = new YoutubeApiClient(config.youtubeApiKey);
+    const api = new YoutubeApiClient(
+      config.youtubeApiKey,
+      config.youtubeCommunityPostChecksEnabled,
+    );
 
     try {
       const channel = await api.resolveChannel(channelInput);
@@ -242,7 +245,10 @@ export class YoutubeCommands {
     }
 
     const { config, db } = getModuleContext();
-    const api = new YoutubeApiClient(config.youtubeApiKey);
+    const api = new YoutubeApiClient(
+      config.youtubeApiKey,
+      config.youtubeCommunityPostChecksEnabled,
+    );
 
     try {
       const channel = await api.resolveChannel(channelInput);
@@ -305,7 +311,10 @@ export class YoutubeCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const { config, db } = getModuleContext();
-    const api = new YoutubeApiClient(config.youtubeApiKey);
+    const api = new YoutubeApiClient(
+      config.youtubeApiKey,
+      config.youtubeCommunityPostChecksEnabled,
+    );
 
     try {
       const channel = await api.resolveChannel(channelInput);
@@ -359,7 +368,10 @@ export class YoutubeCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const { config, db } = getModuleContext();
-    const api = new YoutubeApiClient(config.youtubeApiKey);
+    const api = new YoutubeApiClient(
+      config.youtubeApiKey,
+      config.youtubeCommunityPostChecksEnabled,
+    );
 
     try {
       const channel = await api.resolveChannel(channelInput);
@@ -416,7 +428,10 @@ export class YoutubeCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const { config, db } = getModuleContext();
-    const api = new YoutubeApiClient(config.youtubeApiKey);
+    const api = new YoutubeApiClient(
+      config.youtubeApiKey,
+      config.youtubeCommunityPostChecksEnabled,
+    );
 
     try {
       const channel = await api.resolveChannel(channelInput);
@@ -468,7 +483,10 @@ export class YoutubeCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const { config, db } = getModuleContext();
-    const api = new YoutubeApiClient(config.youtubeApiKey);
+    const api = new YoutubeApiClient(
+      config.youtubeApiKey,
+      config.youtubeCommunityPostChecksEnabled,
+    );
 
     try {
       const channel = await api.resolveChannel(channelInput);
@@ -550,11 +568,17 @@ export class YoutubeCommands {
       return;
     }
 
+    const quotaNote = result.quotaPaused
+      ? result.liveOnly
+        ? "\n\nYouTube API quota is paused — ran **live-only** scrape checks (no API calls)."
+        : "\n\nYouTube API quota is paused — checks were skipped."
+      : "";
+
     const found = result.live + result.videos + result.posts;
 
     if (found === 0) {
       await interaction.editReply({
-        content: `Checked **${result.checked}** channel(s) — no new live streams, videos, or posts to alert.`,
+        content: `Checked **${result.checked}** channel(s) — no new live streams, videos, or posts to alert.${quotaNote}`,
       });
       return;
     }
@@ -564,7 +588,10 @@ export class YoutubeCommands {
         `Checked **${result.checked}** channel(s).`,
         `Found: **${result.live}** live, **${result.videos}** video(s), **${result.posts}** post(s).`,
         `Sent **${result.alerted}** alert(s).`,
-      ].join("\n"),
+        quotaNote.trim(),
+      ]
+        .filter((line) => line.length > 0)
+        .join("\n"),
     });
   }
 }

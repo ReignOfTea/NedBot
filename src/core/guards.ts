@@ -82,3 +82,38 @@ export const AdministratorOnly: GuardFunction<CommandInteraction> = async (
 
   await next();
 };
+
+/** Restricts powerful commands to BOT_ADMIN_USER_IDS, or Administrator if unset. */
+export const BotAdminOnly: GuardFunction<CommandInteraction> = async (
+  interaction,
+  _client,
+  next,
+) => {
+  const { config } = getModuleContext();
+  const allowlist = config.botAdminUserIds;
+
+  if (allowlist.length > 0) {
+    if (!allowlist.includes(interaction.user.id)) {
+      await interaction.reply({
+        content: "You are not authorized to use this command.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await next();
+    return;
+  }
+
+  if (
+    !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
+  ) {
+    await interaction.reply({
+      content: "You need the **Administrator** permission to use this command.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await next();
+};

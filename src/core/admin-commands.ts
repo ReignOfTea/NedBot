@@ -6,10 +6,12 @@ import { Discord, Guard, Slash, SlashChoice, SlashOption } from "discordx";
 
 import { bot } from "./bot.js";
 import { createDbShell, KNOWN_DB_TABLES, type DbShellRowOptions } from "./db-shell.js";
-import { AdministratorOnly, AllowedGuildOnly } from "./guards.js";
+import { AllowedGuildOnly, BotAdminOnly } from "./guards.js";
 import { editEphemeral, DeferEphemeral } from "./interactions.js";
 import { requestRestart } from "./lifecycle.js";
 import { getModuleContext } from "./module-loader.js";
+import { isPm2Managed } from "./restart.js";
+import { getYoutubePoller } from "../modules/youtube-alerter/runtime.js";
 
 const DB_ACTIONS = [
   "help",
@@ -34,7 +36,7 @@ const AsyncFunction = Object.getPrototypeOf(async function () {})
 ) => (...args: unknown[]) => Promise<unknown>;
 
 @Discord()
-@Guard(AllowedGuildOnly, AdministratorOnly)
+@Guard(AllowedGuildOnly, BotAdminOnly)
 export class AdminCommands {
   @Slash({ description: "Restart the bot process", name: "restart" })
   @Guard(DeferEphemeral)
@@ -113,6 +115,37 @@ export class AdminCommands {
       const message = error instanceof Error ? error.message : "Database command failed.";
       await editEphemeral(interaction, formatEvalOutput(message));
     }
+  }
+
+  @Slash({ description: "Bot health and runtime stats", name: "status" })
+  @Guard(DeferEphemeral)
+  async status(interaction: CommandInteraction): Promise<void> {
+    const { config } = getModuleContext();
+    const youtube = getYoutubePoller()?.getStatus();
+    const memoryMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+
+    const lines = [
+      `**Uptime:** ${formatDuration(process.uptime())}`,
+      `**Memory:** ${memoryMb} MiB heap`,
+      `**PM2:** ${isPm2Managed() ? "yes" : "no"}`,
+      `**Git auto-update:** ${config.gitAutoUpdateEnabled ? `on (${config.gitAutoUpdateIntervalMs / 1000}s)` : "off"}`,
+      `**YouTube quota budget:** ${config.youtubeQuotaBudgetPerDay}/day`,
+    ];
+
+    if (youtube) {
+      lines.push(
+        `**YouTube channels:** ${youtube.channelCount}`,
+        `**YouTube poll interval:** ${youtube.pollIntervalSeconds}s (~${youtube.unitsPerChannelCheck} units/channel)`,
+        `**Community post checks:** ${youtube.communityPostChecksEnabled ? "on" : "off"}`,
+      );
+      if (youtube.quotaPausedUntil) {
+        lines.push(`**YouTube quota paused until:** ${youtube.quotaPausedUntil}`);
+      }
+    } else {
+      lines.push("**YouTube alerter:** not running");
+    }
+
+    await editEphemeral(interaction, lines.join("\n"));
   }
 }
 
@@ -258,4 +291,19 @@ function truncate(text: string): string {
   }
 
   return `${text.slice(0, MAX_OUTPUT_LENGTH - 20)}\n… (truncated)\`\`\``;
+}
+
+function formatDuration(seconds: number): string {
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${secs}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${secs}s`;
+  }
+  return `${secs}s`;
 }

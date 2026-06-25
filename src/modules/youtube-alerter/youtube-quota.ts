@@ -1,15 +1,25 @@
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
 import { log } from "./log.js";
 
 const PACIFIC_TIME_ZONE = "America/Los_Angeles";
 
 let pausedUntilMs: number | null = null;
 let pauseLogged = false;
+let pauseAnnounced = false;
+let pauseFilePath: string | null = null;
 
 export class YoutubeQuotaExceededError extends Error {
   constructor(message = "YouTube API daily quota exceeded") {
     super(message);
     this.name = "YoutubeQuotaExceededError";
   }
+}
+
+export function initYoutubeQuotaPersistence(databasePath: string): void {
+  pauseFilePath = `${dirname(databasePath)}/youtube-quota-pause.json`;
+  loadPauseFromDisk();
 }
 
 export function isYoutubeQuotaExceededError(error: unknown): boolean {
@@ -44,6 +54,8 @@ export function clearYoutubeQuotaPauseIfExpired(): void {
   if (pausedUntilMs !== null && Date.now() >= pausedUntilMs) {
     pausedUntilMs = null;
     pauseLogged = false;
+    pauseAnnounced = false;
+    persistPauseToDisk();
     log.info("YouTube API quota pause ended — resuming polling");
   }
 }
@@ -52,12 +64,15 @@ export function pauseYoutubeQuotaUntilDailyReset(): Date {
   const resumeAt = getYoutubeQuotaResetTime();
   pausedUntilMs = resumeAt.getTime();
   pauseLogged = false;
+  pauseAnnounced = false;
+  persistPauseToDisk();
   return resumeAt;
 }
 
-export function noteYoutubeQuotaPause(): void {
+/** Log the pause once per pause window. Returns true the first time. */
+export function noteYoutubeQuotaPause(): boolean {
   if (pauseLogged || pausedUntilMs === null) {
-    return;
+    return false;
   }
 
   pauseLogged = true;
@@ -68,6 +83,16 @@ export function noteYoutubeQuotaPause(): void {
     },
     "YouTube API quota exceeded — polling paused until daily quota reset (midnight Pacific)",
   );
+  return true;
+}
+
+/** Whether a bots-channel announcement is still needed for this pause. */
+export function shouldAnnounceYoutubeQuotaPause(): boolean {
+  return pausedUntilMs !== null && !pauseAnnounced;
+}
+
+export function markYoutubeQuotaPauseAnnounced(): void {
+  pauseAnnounced = true;
 }
 
 /** YouTube Data API quota resets at midnight Pacific Time. */
@@ -101,6 +126,55 @@ export function getYoutubeQuotaPausedIntervalMs(): number | null {
   }
 
   return Math.max(pausedUntil.getTime() - Date.now(), 60_000);
+}
+
+function loadPauseFromDisk(): void {
+  if (!pauseFilePath || !existsSync(pauseFilePath)) {
+    return;
+  }
+
+  try {
+    const raw = readFileSync(pauseFilePath, "utf8");
+    const data = JSON.parse(raw) as { pausedUntilMs?: number };
+    if (
+      typeof data.pausedUntilMs === "number" &&
+      data.pausedUntilMs > Date.now()
+    ) {
+      pausedUntilMs = data.pausedUntilMs;
+      log.info(
+        { resumeAt: new Date(pausedUntilMs).toISOString() },
+        "Restored YouTube API quota pause from disk",
+      );
+    } else {
+      unlinkSync(pauseFilePath);
+    }
+  } catch (error) {
+    log.warn({ err: error }, "Failed to read YouTube quota pause file");
+  }
+}
+
+function persistPauseToDisk(): void {
+  if (!pauseFilePath) {
+    return;
+  }
+
+  try {
+    if (pausedUntilMs === null) {
+      if (existsSync(pauseFilePath)) {
+        unlinkSync(pauseFilePath);
+      }
+      return;
+    }
+
+    mkdirSync(dirname(pauseFilePath), { recursive: true });
+    writeFileSync(
+      pauseFilePath,
+      JSON.stringify({ pausedUntilMs }, null, 2),
+      "utf8",
+    );
+  } catch (error) {
+    log.warn({ err: error }, "Failed to persist YouTube quota pause");
+  }
 }
 
 function getPacificTimeParts(date: Date): {

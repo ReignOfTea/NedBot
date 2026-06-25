@@ -1,5 +1,6 @@
 import type { TextChannel } from "discord.js";
 
+import { announceInBotsChannel } from "../../core/bots-channel.js";
 import { formatPingMentions, parsePingIds, type Database } from "../../core/database.js";
 import type { ModuleContext } from "../../core/types.js";
 import { buildYoutubeAlertPayload } from "./alerts.js";
@@ -17,9 +18,12 @@ import { YoutubeApiClient } from "./youtube-api.js";
 import {
   clearYoutubeQuotaPauseIfExpired,
   getYoutubeQuotaPausedIntervalMs,
+  getYoutubeQuotaPausedUntil,
   isYoutubeQuotaExceededError,
   isYoutubeQuotaPaused,
+  markYoutubeQuotaPauseAnnounced,
   noteYoutubeQuotaPause,
+  shouldAnnounceYoutubeQuotaPause,
 } from "./youtube-quota.js";
 
 export interface SyncResult {
@@ -28,6 +32,17 @@ export interface SyncResult {
   videos: number;
   posts: number;
   alerted: number;
+  quotaPaused: boolean;
+  liveOnly: boolean;
+}
+
+export interface YoutubePollerStatus {
+  channelCount: number;
+  pollIntervalSeconds: number;
+  quotaBudgetPerDay: number;
+  quotaPausedUntil: string | null;
+  communityPostChecksEnabled: boolean;
+  unitsPerChannelCheck: number;
 }
 
 export class YoutubePoller {
@@ -41,6 +56,9 @@ export class YoutubePoller {
     private readonly quotaBudgetPerDay: number,
     private readonly apiKey: string,
     private readonly guildId: string,
+    private readonly botsChannelId: string,
+    private readonly communityPostChecksEnabled: boolean,
+    private readonly unitsPerChannelCheck: number,
   ) {}
 
   start(): void {
@@ -48,7 +66,10 @@ export class YoutubePoller {
       return;
     }
 
-    this.api = new YoutubeApiClient(this.apiKey);
+    this.api = new YoutubeApiClient(
+      this.apiKey,
+      this.communityPostChecksEnabled,
+    );
     this.applyPollInterval();
     void this.poll();
   }
@@ -69,6 +90,22 @@ export class YoutubePoller {
     this.applyPollInterval();
   }
 
+  getStatus(): YoutubePollerStatus {
+    const channelCount = getDistinctYoutubeChannelIdsForGuild(
+      this.db,
+      this.guildId,
+    ).length;
+
+    return {
+      channelCount,
+      pollIntervalSeconds: this.pollIntervalMs / 1000,
+      quotaBudgetPerDay: this.quotaBudgetPerDay,
+      quotaPausedUntil: getYoutubeQuotaPausedUntil()?.toISOString() ?? null,
+      communityPostChecksEnabled: this.communityPostChecksEnabled,
+      unitsPerChannelCheck: this.unitsPerChannelCheck,
+    };
+  }
+
   private applyPollInterval(): void {
     clearYoutubeQuotaPauseIfExpired();
 
@@ -79,7 +116,11 @@ export class YoutubePoller {
     ).length;
     const nextMs =
       pausedIntervalMs ??
-      computeYoutubePollIntervalMs(channelCount, this.quotaBudgetPerDay);
+      computeYoutubePollIntervalMs(
+        channelCount,
+        this.quotaBudgetPerDay,
+        this.unitsPerChannelCheck,
+      );
 
     if (this.interval && nextMs === this.pollIntervalMs) {
       return;
@@ -92,7 +133,9 @@ export class YoutubePoller {
     this.pollIntervalMs = nextMs;
 
     if (pausedIntervalMs !== null) {
-      noteYoutubeQuotaPause();
+      if (noteYoutubeQuotaPause()) {
+        void this.announceQuotaPauseIfNeeded();
+      }
       log.info(
         {
           intervalSeconds: nextMs / 1000,
@@ -118,7 +161,10 @@ export class YoutubePoller {
 
   async syncNow(): Promise<SyncResult> {
     if (!this.api) {
-      this.api = new YoutubeApiClient(this.apiKey);
+      this.api = new YoutubeApiClient(
+        this.apiKey,
+        this.communityPostChecksEnabled,
+      );
     }
 
     return this.runChecks({ force: true });
@@ -140,12 +186,19 @@ export class YoutubePoller {
       videos: 0,
       posts: 0,
       alerted: 0,
+      quotaPaused: false,
+      liveOnly: false,
     };
 
     clearYoutubeQuotaPauseIfExpired();
-    if (isYoutubeQuotaPaused()) {
-      noteYoutubeQuotaPause();
-      return result;
+    const quotaPaused = isYoutubeQuotaPaused();
+    result.quotaPaused = quotaPaused;
+    result.liveOnly = quotaPaused;
+
+    if (quotaPaused) {
+      if (noteYoutubeQuotaPause()) {
+        void this.announceQuotaPauseIfNeeded();
+      }
     }
 
     const channelIds = getDistinctYoutubeChannelIdsForGuild(
@@ -187,8 +240,12 @@ export class YoutubePoller {
         }
       } catch (error) {
         if (isYoutubeQuotaExceededError(error)) {
-          noteYoutubeQuotaPause();
+          if (noteYoutubeQuotaPause()) {
+            void this.announceQuotaPauseIfNeeded();
+          }
           this.applyPollInterval();
+          result.quotaPaused = true;
+          result.liveOnly = true;
           break;
         }
 
@@ -197,6 +254,25 @@ export class YoutubePoller {
     }
 
     return result;
+  }
+
+  private async announceQuotaPauseIfNeeded(): Promise<void> {
+    if (!shouldAnnounceYoutubeQuotaPause()) {
+      return;
+    }
+
+    const resumeAt = getYoutubeQuotaPausedUntil();
+    if (!resumeAt) {
+      return;
+    }
+
+    markYoutubeQuotaPauseAnnounced();
+    await announceInBotsChannel(
+      this.getClient(),
+      this.guildId,
+      this.botsChannelId,
+      `YouTube API quota exceeded. API polling paused until <t:${Math.floor(resumeAt.getTime() / 1000)}:f> (midnight Pacific). Live scrape checks continue.`,
+    );
   }
 
   private async notifySubscribers(

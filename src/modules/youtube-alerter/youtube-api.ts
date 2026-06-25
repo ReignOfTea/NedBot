@@ -90,7 +90,10 @@ const FETCH_HEADERS = {
 };
 
 export class YoutubeApiClient {
-  constructor(private readonly apiKey: string) {}
+  constructor(
+    private readonly apiKey: string,
+    private readonly communityPostChecksEnabled = false,
+  ) {}
 
   private async fetchApi<T>(
     path: string,
@@ -187,6 +190,10 @@ export class YoutubeApiClient {
   }
 
   async checkChannel(channelId: string): Promise<ChannelCheckResult> {
+    if (isYoutubeQuotaPaused()) {
+      return this.checkChannelLiveOnly(channelId);
+    }
+
     const result: ChannelCheckResult = {
       live: null,
       upload: null,
@@ -196,7 +203,9 @@ export class YoutubeApiClient {
     const [scrapedLiveVideoId, channelItem, activities] = await Promise.all([
       this.resolveLiveVideoId(channelId),
       this.fetchChannelContentDetails(channelId),
-      this.fetchActivities(channelId),
+      this.communityPostChecksEnabled
+        ? this.fetchActivities(channelId)
+        : Promise.resolve([]),
     ]);
 
     for (const activity of activities) {
@@ -270,6 +279,22 @@ export class YoutubeApiClient {
         result.upload = alert;
         break;
       }
+    }
+
+    return result;
+  }
+
+  /** Scrape /live and confirm via oEmbed only — no YouTube Data API quota. */
+  async checkChannelLiveOnly(channelId: string): Promise<ChannelCheckResult> {
+    const result: ChannelCheckResult = {
+      live: null,
+      upload: null,
+      post: null,
+    };
+
+    const videoId = await this.resolveLiveVideoId(channelId);
+    if (videoId) {
+      result.live = await this.getLiveStreamFromOembed(videoId, channelId);
     }
 
     return result;

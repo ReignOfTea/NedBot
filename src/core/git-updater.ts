@@ -15,6 +15,8 @@ export interface GitUpdaterOptions {
 export class GitUpdater {
   private interval: ReturnType<typeof setInterval> | null = null;
   private updating = false;
+  private checkInProgress = false;
+  private exiting = false;
 
   constructor(
     private readonly config: AppConfig,
@@ -51,10 +53,11 @@ export class GitUpdater {
   }
 
   async checkForUpdates(): Promise<boolean> {
-    if (this.updating) {
+    if (this.updating || this.checkInProgress || this.exiting) {
       return false;
     }
 
+    this.checkInProgress = true;
     const remoteRef = `${this.config.gitRemote}/${this.config.gitBranch}`;
     let shutdownCompleted = false;
 
@@ -119,24 +122,32 @@ export class GitUpdater {
         shutdownCompleted = true;
       });
 
-      await runGitStep("npm install", () => runNpmCommand(["install"]));
+      await runGitStep("npm install", () =>
+        runNpmCommand(["install", "--include=dev"]),
+      );
       await runGitStep("npm build", () => runNpmCommand(["run", "build"]));
 
       coreLog.info("Git auto-update: restart starting");
+      this.exiting = true;
       restartProcess();
     } catch (error) {
       this.updating = false;
       const detail = formatCommandError(error);
       coreLog.error(`Git auto-update failed — ${detail}`);
 
-      if (shutdownCompleted) {
+      if (shutdownCompleted && !this.exiting) {
         coreLog.warn(
           "Git auto-update: bot was shut down before failure — restarting to recover",
         );
+        this.exiting = true;
         restartProcess();
       }
 
       return false;
+    } finally {
+      if (!this.updating) {
+        this.checkInProgress = false;
+      }
     }
 
     return true;

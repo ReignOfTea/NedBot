@@ -118,7 +118,7 @@ Logs are written to `logs/pm2-out.log` and `logs/pm2-error.log`.
 - `@handle`
 - Raw channel ID (`UC...`)
 
-Poll interval is computed automatically from `YOUTUBE_QUOTA_BUDGET_PER_DAY` and the number of subscribed channels (~4 quota units per channel per poll).
+Poll interval is computed automatically from `YOUTUBE_QUOTA_BUDGET_PER_DAY` and the number of subscribed channels (~3 quota units per channel per poll).
 
 ## Role Request
 
@@ -212,6 +212,9 @@ src/
 | `YOUTUBE_API_KEY` | Yes | — | YouTube Data API v3 key — [how to get one](#youtube_api_key--youtube-data-api-v3-key) |
 | `DATABASE_PATH` | No | `./data/ned-bot.db` | SQLite file path |
 | `YOUTUBE_QUOTA_BUDGET_PER_DAY` | No | `8000` | Max API quota units for polling per day; interval is derived from this and subscription count |
+| `YOUTUBE_COMMUNITY_POST_CHECKS_ENABLED` | No | `false` | Enable community post checks via `activities.list` (+1 quota unit per poll) |
+| `BOT_ADMIN_USER_IDS` | No | — | Comma-separated user IDs for `/restart`, `/eval`, `/db`, `/status`; falls back to Administrator |
+| `GIT_AUTO_UPDATE_INTERVAL_SECONDS` | No | `300` | How often to check for git updates when auto-update is enabled |
 | `NODE_ENV` | No | `development` | Set to `production` to disable HMR |
 
 ## License

@@ -16,6 +16,8 @@ export interface AppConfig {
   gitAutoUpdateIntervalMs: number;
   gitRemote: string;
   gitBranch: string;
+  youtubeCommunityPostChecksEnabled: boolean;
+  botAdminUserIds: readonly string[];
 }
 
 function requireEnv(name: string): string {
@@ -34,6 +36,27 @@ function parseQuotaBudget(raw: string | undefined): number {
     );
   }
   return value;
+}
+
+function parseBotAdminUserIds(raw: string | undefined): string[] {
+  if (!raw?.trim()) {
+    return [];
+  }
+
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
+export function getYoutubeQuotaUnitsPerChannelCheck(
+  config: Pick<AppConfig, "youtubeCommunityPostChecksEnabled">,
+): number {
+  let units = 3;
+  if (config.youtubeCommunityPostChecksEnabled) {
+    units += 1;
+  }
+  return units;
 }
 
 export function loadConfig(): AppConfig {
@@ -61,5 +84,8 @@ export function loadConfig(): AppConfig {
       Number(process.env.GIT_AUTO_UPDATE_INTERVAL_SECONDS ?? 300) * 1000,
     gitRemote: process.env.GIT_REMOTE?.trim() || "origin",
     gitBranch: process.env.GIT_BRANCH?.trim() || "master",
+    youtubeCommunityPostChecksEnabled:
+      process.env.YOUTUBE_COMMUNITY_POST_CHECKS_ENABLED === "true",
+    botAdminUserIds: parseBotAdminUserIds(process.env.BOT_ADMIN_USER_IDS),
   };
 }
