@@ -37,11 +37,16 @@ function resolveLevelName(log: Record<string, unknown>): string {
   return LEVEL_NAMES[level] ?? "INFO";
 }
 
-function buildPrettyStream() {
+function shouldHideStructuredFields(level: string): boolean {
+  const normalized = level.toLowerCase();
+  return normalized !== "debug" && normalized !== "trace";
+}
+
+function buildPrettyStream(level: string) {
   return pinoPretty({
     colorize: true,
     ignore: "pid,hostname,time,module,level",
-    hideObject: true,
+    hideObject: shouldHideStructuredFields(level),
     singleLine: false,
     messageFormat: (log, messageKey) => {
       const moduleName = String(log.module ?? "app");
@@ -60,14 +65,16 @@ export function initLogger(options: LoggerInitOptions): Logger {
     return rootLogger;
   }
 
+  const level =
+    options.level ??
+    process.env.LOG_LEVEL ??
+    (options.isProduction ? "info" : "debug");
+
   rootLogger = pino(
     {
-      level:
-        options.level ??
-        process.env.LOG_LEVEL ??
-        (options.isProduction ? "info" : "debug"),
+      level,
     },
-    buildPrettyStream(),
+    buildPrettyStream(level),
   );
 
   coreLog = rootLogger.child({ module: "core" });

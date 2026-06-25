@@ -176,11 +176,11 @@ export class PermissionCommands {
 
   @Slash({
     description: "List roles that have a permission",
-    name: "roles",
+    name: "who-has",
   })
   @SlashGroup("perms")
   @Guard(OwnerOnly, DeferEphemeral)
-  async roles(
+  async whoHas(
     @SlashOption({
       description: "Permission key (see /perms catalog)",
       name: "permission",

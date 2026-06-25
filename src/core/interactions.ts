@@ -4,6 +4,46 @@ import type { GuardFunction } from "discordx";
 import { coreLog } from "./logger.js";
 
 const IGNORABLE_INTERACTION_CODES = new Set([10_062, 40_060]);
+const ALREADY_ACKNOWLEDGED_CODE = 40_060;
+
+function formatInteractionError(error: unknown): string {
+  if (error instanceof Error) {
+    const code =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code: unknown }).code !== undefined
+        ? ` [code ${String((error as { code: unknown }).code)}]`
+        : "";
+    return `${error.message}${code}`;
+  }
+
+  return String(error);
+}
+
+function describeInteraction(interaction: CommandInteraction): Record<string, unknown> {
+  const subcommand = interaction.isChatInputCommand()
+    ? interaction.options.getSubcommand(false)
+    : null;
+
+  return {
+    id: interaction.id,
+    command: subcommand
+      ? `${interaction.commandName} ${subcommand}`
+      : interaction.commandName,
+    deferred: interaction.deferred,
+    replied: interaction.replied,
+  };
+}
+
+function isAlreadyAcknowledgedError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    Number((error as { code: unknown }).code) === ALREADY_ACKNOWLEDGED_CODE
+  );
+}
 
 /** Discord message content limit with a small safety buffer. */
 export const DISCORD_EPHEMERAL_PAGE_SIZE = 1900;
@@ -111,14 +151,25 @@ export async function sendEphemeralContent(
 
   if (!interaction.deferred && !interaction.replied) {
     if (chunks.length === 1) {
-      await interaction.reply({
-        content: truncateContent(first),
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+      try {
+        await interaction.reply({
+          content: truncateContent(first),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      } catch (error) {
+        if (!isAlreadyAcknowledgedError(error)) {
+          throw error;
+        }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        coreLog.debug(
+          { ...describeInteraction(interaction), err: error },
+          "Ephemeral reply already acknowledged — falling back to editReply",
+        );
+      }
+    } else {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    }
   }
 
   await interaction.editReply({ content: truncateContent(first) });
@@ -137,10 +188,14 @@ export async function runEphemeralCommand(
   fn: () => Promise<string> | string,
 ): Promise<void> {
   try {
+    coreLog.debug(describeInteraction(interaction), "Running ephemeral command");
     const content = await fn();
     await sendEphemeralContent(interaction, content);
   } catch (error) {
-    coreLog.warn({ err: error }, "Ephemeral command failed");
+    coreLog.warn(
+      { err: error, ...describeInteraction(interaction) },
+      `Ephemeral command failed: ${formatInteractionError(error)}`,
+    );
     const message =
       error instanceof Error ? error.message : "Command failed.";
 
@@ -148,8 +203,12 @@ export async function runEphemeralCommand(
       await editEphemeral(interaction, message);
     } catch (replyError) {
       coreLog.error(
-        { err: replyError, originalErr: error },
-        "Failed to send ephemeral error response",
+        {
+          err: replyError,
+          originalErr: error,
+          ...describeInteraction(interaction),
+        },
+        `Failed to send ephemeral error response: ${formatInteractionError(replyError)}`,
       );
     }
   }
@@ -195,7 +254,10 @@ export async function editEphemeral(
       flags: MessageFlags.Ephemeral,
     });
   } catch (error) {
-    coreLog.warn({ err: error }, "editEphemeral failed");
+    coreLog.warn(
+      { err: error, ...describeInteraction(interaction) },
+      `editEphemeral failed: ${formatInteractionError(error)}`,
+    );
     if (isIgnorableInteractionError(error)) {
       return;
     }
