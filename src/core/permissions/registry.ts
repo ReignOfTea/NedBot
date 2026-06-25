@@ -171,8 +171,19 @@ export function chunkDiscordMessages(text: string, limit = DISCORD_MESSAGE_LIMIT
   return chunks;
 }
 
+export function normalizePermissionKey(key: string): string {
+  return key.trim().toLowerCase();
+}
+
 export function isKnownPermission(key: string): boolean {
-  return key in PERMISSION_CATALOG;
+  const normalized = normalizePermissionKey(key);
+  return normalized in PERMISSION_CATALOG;
+}
+
+/** Whether a key can be granted/revoked (groups, wildcards, or individual commands). */
+export function isGrantablePermission(key: string): boolean {
+  const normalized = normalizePermissionKey(key);
+  return isPermissionCatalogGroup(normalized) || normalized in PERMISSION_CATALOG;
 }
 
 import type { CommandInteraction } from "discord.js";

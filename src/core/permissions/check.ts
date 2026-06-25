@@ -33,16 +33,18 @@ export function hasLegacyBotAdmin(userId: string): boolean {
 }
 
 function permissionMatches(granted: string, required: string): boolean {
-  if (granted === required || granted === "*") {
+  const normalizedGranted = granted.trim().toLowerCase();
+
+  if (normalizedGranted === required || normalizedGranted === "*") {
     return true;
   }
 
-  if (isPermissionCatalogGroup(granted)) {
-    return required.startsWith(`${granted}.`);
+  if (isPermissionCatalogGroup(normalizedGranted)) {
+    return required.startsWith(`${normalizedGranted}.`);
   }
 
-  if (granted.endsWith(".*")) {
-    const prefix = granted.slice(0, -1);
+  if (normalizedGranted.endsWith(".*")) {
+    const prefix = normalizedGranted.slice(0, -1);
     return required.startsWith(prefix);
   }
 

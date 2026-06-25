@@ -21,10 +21,11 @@ import {
   formatPermissionCatalogGroup,
   formatPermissionCatalogOverview,
   grantRolePermission,
-  isKnownPermission,
+  isGrantablePermission,
   isPermissionCatalogGroup,
   listRolePermissions,
   listRolesWithPermission,
+  normalizePermissionKey,
   OwnerOnly,
   PERMISSION_CATALOG,
   PERMISSION_CATALOG_GROUPS,
@@ -59,28 +60,29 @@ export class PermissionCommands {
       return;
     }
 
-    if (!isKnownPermission(permission)) {
+    if (!isGrantablePermission(permission)) {
       await editEphemeral(
         interaction,
-        `Unknown permission \`${permission}\`. Use /perms catalog for valid keys.`,
+        `Unknown permission \`${permission}\`. Use \`/perms catalog\` for groups (\`core\`, \`mod\`, …), wildcards, or individual keys.`,
       );
       return;
     }
 
+    const permissionKey = normalizePermissionKey(permission);
     const { db } = getModuleContext();
     const added = grantRolePermission(
       db,
       interaction.guildId,
       role.id,
-      permission,
+      permissionKey,
       interaction.user.id,
     );
 
     await editEphemeral(
       interaction,
       added
-        ? `Granted \`${permission}\` to ${role}.`
-        : `${role} already has \`${permission}\`.`,
+        ? `Granted \`${permissionKey}\` to ${role}.`
+        : `${role} already has \`${permissionKey}\`.`,
     );
   }
 
@@ -108,27 +110,28 @@ export class PermissionCommands {
       return;
     }
 
-    if (!isKnownPermission(permission)) {
+    if (!isGrantablePermission(permission)) {
       await editEphemeral(
         interaction,
-        `Unknown permission \`${permission}\`. Use /perms catalog for valid keys.`,
+        `Unknown permission \`${permission}\`. Use \`/perms catalog\` for groups, wildcards, or individual keys.`,
       );
       return;
     }
 
+    const permissionKey = normalizePermissionKey(permission);
     const { db } = getModuleContext();
     const removed = revokeRolePermission(
       db,
       interaction.guildId,
       role.id,
-      permission,
+      permissionKey,
     );
 
     await editEphemeral(
       interaction,
       removed
-        ? `Revoked \`${permission}\` from ${role}.`
-        : `${role} did not have \`${permission}\`.`,
+        ? `Revoked \`${permissionKey}\` from ${role}.`
+        : `${role} did not have \`${permissionKey}\`.`,
     );
   }
 
@@ -188,34 +191,35 @@ export class PermissionCommands {
       return;
     }
 
-    if (!isKnownPermission(permission)) {
+    if (!isGrantablePermission(permission)) {
       await editEphemeral(
         interaction,
-        `Unknown permission \`${permission}\`. Use /perms catalog for valid keys.`,
+        `Unknown permission \`${permission}\`. Use \`/perms catalog\` for groups, wildcards, or individual keys.`,
       );
       return;
     }
 
+    const permissionKey = normalizePermissionKey(permission);
     const { db } = getModuleContext();
     const roleIds = listRolesWithPermission(
       db,
       interaction.guildId,
-      permission,
+      permissionKey,
     );
 
     if (roleIds.length === 0) {
       await editEphemeral(
         interaction,
-        `No roles have \`${permission}\`.`,
+        `No roles have \`${permissionKey}\`.`,
       );
       return;
     }
 
     const mentions = roleIds.map((id) => `<@&${id}>`).join(", ");
-    const label = PERMISSION_CATALOG[permission];
+    const label = PERMISSION_CATALOG[permissionKey];
     const header = label
-      ? `**${permission}** — ${label}`
-      : `**${permission}**`;
+      ? `**${permissionKey}** — ${label}`
+      : `**${permissionKey}**`;
 
     await editEphemeral(interaction, `${header}\n${mentions}`);
   }
