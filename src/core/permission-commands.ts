@@ -1,7 +1,6 @@
 import {
   ApplicationCommandOptionType,
   type CommandInteraction,
-  MessageFlags,
   type Role,
 } from "discord.js";
 import {
@@ -14,10 +13,13 @@ import {
 } from "discordx";
 
 import { AllowedGuildOnly } from "./guards.js";
-import { DeferEphemeral, editEphemeral } from "./interactions.js";
+import {
+  DeferEphemeral,
+  editEphemeral,
+  runEphemeralCommand,
+} from "./interactions.js";
 import { getModuleContext } from "./module-loader.js";
 import {
-  chunkDiscordMessages,
   formatPermissionCatalogGroup,
   formatPermissionCatalogOverview,
   grantRolePermission,
@@ -226,68 +228,35 @@ export class PermissionCommands {
 
   @Slash({ description: "List all permission keys", name: "catalog" })
   @SlashGroup("perms")
-  @Guard(OwnerOnly, DeferEphemeral)
+  @Guard(OwnerOnly)
   async catalog(
     @SlashChoice(...PERMISSION_CATALOG_GROUPS)
     @SlashOption({
       description: "Show only one section (admin, mod, youtube, …)",
-      name: "group",
+      name: "section",
       required: false,
       type: ApplicationCommandOptionType.String,
     })
-    group: string | undefined,
+    _section: string | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    try {
+    await runEphemeralCommand(interaction, () => {
       if (!interaction.isChatInputCommand()) {
-        await editEphemeral(
-          interaction,
-          "This command can only be used as a slash command.",
-        );
-        return;
+        return "This command can only be used as a slash command.";
       }
 
       const section =
-        group ??
-        interaction.options.getString("group") ??
-        undefined;
+        interaction.options.getString("section") ?? _section ?? undefined;
 
-      const content =
-        section && isPermissionCatalogGroup(section)
-          ? formatPermissionCatalogGroup(section)
-          : formatPermissionCatalogOverview();
+      if (section && !isPermissionCatalogGroup(section)) {
+        return `Unknown section \`${section}\`. Valid sections: ${PERMISSION_CATALOG_GROUPS.join(", ")}.`;
+      }
 
-      await sendEphemeralChunks(interaction, content);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to load permission catalog.";
-      await editEphemeral(interaction, message);
-    }
-  }
-}
+      if (section && isPermissionCatalogGroup(section)) {
+        return formatPermissionCatalogGroup(section);
+      }
 
-async function sendEphemeralChunks(
-  interaction: CommandInteraction,
-  content: string,
-): Promise<void> {
-  const chunks = chunkDiscordMessages(content);
-  const first = chunks[0]?.trim();
-  if (!first) {
-    await editEphemeral(interaction, "Permission catalog is empty.");
-    return;
-  }
-
-  await editEphemeral(interaction, first);
-
-  for (let index = 1; index < chunks.length; index++) {
-    const chunk = chunks[index]?.trim();
-    if (!chunk) {
-      continue;
-    }
-
-    await interaction.followUp({
-      content: chunk,
-      flags: MessageFlags.Ephemeral,
+      return formatPermissionCatalogOverview();
     });
   }
 }

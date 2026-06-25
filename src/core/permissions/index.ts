@@ -13,7 +13,6 @@ export {
   requirePermission,
 } from "./guard.js";
 export {
-  chunkDiscordMessages,
   formatPermissionCatalogGroup,
   formatPermissionCatalogOverview,
   isGrantablePermission,

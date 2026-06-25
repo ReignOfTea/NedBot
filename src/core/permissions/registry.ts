@@ -112,8 +112,6 @@ export function listPermissionKeysForGroup(
   );
 }
 
-const DISCORD_MESSAGE_LIMIT = 2000;
-
 export function formatPermissionCatalogOverview(): string {
   const wildcards = PERMISSION_KEYS.filter((key) => key.endsWith(".*"));
   return [
@@ -130,7 +128,7 @@ export function formatPermissionCatalogOverview(): string {
     "**Wildcards**",
     wildcards.map((key) => `- \`${key}\` — ${PERMISSION_CATALOG[key]}`).join("\n"),
     "",
-    "Use `/perms catalog group:<name>` to list every key in a section.",
+    "Use `/perms catalog section:<name>` to list every key in a section.",
   ].join("\n");
 }
 
@@ -142,33 +140,6 @@ export function formatPermissionCatalogGroup(group: PermissionCatalogGroup): str
   });
 
   return [`**${group}** permissions`, ...lines].join("\n");
-}
-
-/** Split text into Discord-safe message chunks. */
-export function chunkDiscordMessages(text: string, limit = DISCORD_MESSAGE_LIMIT): string[] {
-  if (text.length <= limit) {
-    return [text];
-  }
-
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= limit) {
-      chunks.push(remaining);
-      break;
-    }
-
-    let splitAt = remaining.lastIndexOf("\n", limit);
-    if (splitAt <= 0) {
-      splitAt = limit;
-    }
-
-    chunks.push(remaining.slice(0, splitAt).trimEnd());
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-
-  return chunks;
 }
 
 export function normalizePermissionKey(key: string): string {
