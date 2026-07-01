@@ -77,6 +77,7 @@ interface YoutubeActivityItem {
 interface OEmbedResponse {
   title?: string;
   author_name?: string;
+  author_url?: string;
   thumbnail_url?: string;
 }
 
@@ -432,7 +433,10 @@ export class YoutubeApiClient {
     }
 
     if (response.ok) {
-      return this.extractLiveVideoIdFromHtml(await response.text());
+      return this.extractLiveVideoIdFromHtml(
+        await response.text(),
+        channelId,
+      );
     }
 
     return null;
@@ -450,10 +454,13 @@ export class YoutubeApiClient {
       return null;
     }
 
-    return this.extractLiveVideoIdFromHtml(await response.text());
+    return this.extractLiveVideoIdFromHtml(await response.text(), channelId);
   }
 
-  private extractLiveVideoIdFromHtml(html: string): string | null {
+  private extractLiveVideoIdFromHtml(
+    html: string,
+    expectedChannelId: string,
+  ): string | null {
     if (/"LIVE_STREAM_OFFLINE"/.test(html)) {
       return null;
     }
@@ -481,15 +488,29 @@ export class YoutubeApiClient {
       return null;
     }
 
-    const videoDetails = html.match(
-      /"videoDetails":\{"videoId":"([\w-]{11})"/,
-    );
-    if (videoDetails) {
-      return videoDetails[1];
+    const videoDetailsStart = html.indexOf('"videoDetails":');
+    if (videoDetailsStart !== -1) {
+      const block = html.slice(videoDetailsStart, videoDetailsStart + 2000);
+      const videoId = block.match(/"videoId":"([\w-]{11})"/)?.[1];
+      const ownerChannelId = block.match(/"channelId":"(UC[\w-]{22})"/i)?.[1];
+
+      if (videoId && ownerChannelId) {
+        if (ownerChannelId !== expectedChannelId) {
+          log.debug(
+            { expectedChannelId, ownerChannelId, videoId },
+            "Ignoring scraped live video from another channel",
+          );
+          return null;
+        }
+        return videoId;
+      }
+
+      if (videoId) {
+        return videoId;
+      }
     }
 
-    const fallback = html.match(/"videoId":"([\w-]{11})"/);
-    return fallback?.[1] ?? null;
+    return null;
   }
 
   private async getLiveStreamFromApi(
@@ -511,7 +532,7 @@ export class YoutubeApiClient {
 
   private mapVideoToLiveStream(
     video: YoutubeVideoItem,
-    fallbackChannelId: string,
+    expectedChannelId: string,
   ): YoutubeLiveStream | null {
     const live = video.liveStreamingDetails;
     const isLive =
@@ -524,6 +545,17 @@ export class YoutubeApiClient {
     }
 
     const snippet = video.snippet;
+    const ownerChannelId = snippet?.channelId;
+    if (!ownerChannelId || ownerChannelId !== expectedChannelId) {
+      if (ownerChannelId) {
+        log.debug(
+          { expectedChannelId, ownerChannelId, videoId: video.id },
+          "Ignoring live stream from another channel",
+        );
+      }
+      return null;
+    }
+
     const thumbnail =
       snippet?.thumbnails?.high?.url ??
       snippet?.thumbnails?.default?.url ??
@@ -533,7 +565,7 @@ export class YoutubeApiClient {
       type: "live",
       contentId: video.id,
       title: snippet?.title ?? "Live Stream",
-      channelId: snippet?.channelId ?? fallbackChannelId,
+      channelId: ownerChannelId,
       channelTitle: snippet?.channelTitle ?? "Unknown Channel",
       thumbnailUrl: thumbnail,
       url: `https://www.youtube.com/watch?v=${video.id}`,
@@ -626,12 +658,20 @@ export class YoutubeApiClient {
     }
 
     const data = (await response.json()) as OEmbedResponse;
+    const ownerChannelId = extractChannelIdFromAuthorUrl(data.author_url);
+    if (!ownerChannelId || ownerChannelId !== channelId) {
+      log.debug(
+        { channelId, ownerChannelId, videoId },
+        "Ignoring oEmbed live stream from another channel",
+      );
+      return null;
+    }
 
     return {
       type: "live",
       contentId: videoId,
       title: data.title ?? "Live Stream",
-      channelId,
+      channelId: ownerChannelId,
       channelTitle: data.author_name ?? "Unknown Channel",
       thumbnailUrl:
         data.thumbnail_url ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
@@ -671,6 +711,17 @@ function parseIso8601Duration(duration: string | undefined): number {
   const minutes = Number(match[2] ?? 0);
   const seconds = Number(match[3] ?? 0);
   return hours * 3600 + minutes * 60 + seconds;
+}
+
+function extractChannelIdFromAuthorUrl(
+  authorUrl: string | undefined,
+): string | null {
+  if (!authorUrl) {
+    return null;
+  }
+
+  const match = authorUrl.match(/\/channel\/(UC[\w-]{22})/i);
+  return match?.[1] ?? null;
 }
 
 function extractVideoId(url: string): string | null {
