@@ -42,20 +42,40 @@ function shouldHideStructuredFields(level: string): boolean {
   return normalized !== "debug" && normalized !== "trace";
 }
 
+function formatAttachedError(log: Record<string, unknown>): string {
+  const err = log.err ?? log.error;
+  if (typeof err === "string" && err.length > 0) {
+    return `\n${err}`;
+  }
+  if (!err || typeof err !== "object") {
+    return "";
+  }
+
+  const details = err as { message?: unknown; stack?: unknown };
+  if (typeof details.stack === "string" && details.stack.length > 0) {
+    return `\n${details.stack}`;
+  }
+  if (typeof details.message === "string" && details.message.length > 0) {
+    return `\n${details.message}`;
+  }
+  return "";
+}
+
 function buildPrettyStream(level: string) {
   return pinoPretty({
     colorize: true,
-    ignore: "pid,hostname,time,module,level",
+    ignore: "pid,hostname,time,module,level,err,error",
     hideObject: shouldHideStructuredFields(level),
     singleLine: false,
     messageFormat: (log, messageKey) => {
-      const moduleName = String(log.module ?? "app");
-      const message = String(log[messageKey] ?? "");
-      const levelName = resolveLevelName(log);
-      const level = colorizeLevel(levelName);
-      const time = formatLogTime(log.time);
+      const record = log as Record<string, unknown>;
+      const moduleName = String(record.module ?? "app");
+      const message = String(record[messageKey] ?? "");
+      const levelName = resolveLevelName(record);
+      const levelLabel = colorizeLevel(levelName);
+      const time = formatLogTime(record.time);
 
-      return `[${time}] [${moduleName}] ${level}: ${message}`;
+      return `[${time}] [${moduleName}] ${levelLabel}: ${message}${formatAttachedError(record)}`;
     },
   });
 }

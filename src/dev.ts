@@ -94,10 +94,11 @@ async function run(): Promise<void> {
 }
 
 run().catch((error: unknown) => {
+  const details = error instanceof Error ? (error.stack ?? error.message) : error;
   try {
     coreLog.fatal({ err: error }, "Fatal error");
   } catch {
-    console.error("Fatal error:", error);
+    console.error("Fatal error:", details);
   }
   process.exit(1);
 });
